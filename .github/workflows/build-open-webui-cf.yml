@@ -10,7 +10,8 @@ name: build-open-webui-cf
 # (chart 14.5.0 → appVersion 0.9.5). Bump it here and in the panda-chat chart
 # (open-webui.image.tag) together whenever the chart dependency is bumped.
 #
-# Output: ghcr.io/ethpandaops/open-webui-cf:<ow_tag>-<sha>  (+ :<ow_tag>-latest)
+# Output: ghcr.io/ethpandaops/open-webui-cf:<ow_tag>  (+ immutable :<ow_tag>-<sha>)
+# The chart pins the plain :<ow_tag> (= OW appVersion); :<ow_tag>-<sha> is immutable.
 
 on:
   push:
@@ -52,8 +53,8 @@ jobs:
           docker build \
             --build-arg OW_TAG="${OW_TAG}" \
             -t "${IMAGE}:${TAG}" \
-            -t "${IMAGE}:${OW_TAG}-latest" \
+            -t "${IMAGE}:${OW_TAG}" \
             images/open-webui-cf
           docker push "${IMAGE}:${TAG}"
-          docker push "${IMAGE}:${OW_TAG}-latest"
-          echo "Pushed ${IMAGE}:${TAG} (+ ${OW_TAG}-latest)"
+          docker push "${IMAGE}:${OW_TAG}"
+          echo "Pushed ${IMAGE}:${OW_TAG} (+ immutable ${TAG})"
