@@ -1,0 +1,59 @@
+name: build-open-webui-cf
+
+# Builds the CF-Access-aware Open-WebUI overlay and pushes it to GHCR.
+# The overlay patches get_headers_and_cookies() in open-webui's openai.py so
+# Cf-Access-Jwt-Assertion is forwarded to the upstream Hermes endpoint,
+# enabling per-user CF Access auth on downstream devnet resources.
+# Source under images/open-webui-cf/.
+#
+# OW_TAG must match the appVersion of the open-webui Helm chart in use
+# (chart 14.5.0 → appVersion 0.9.5). Bump it here and in the panda-chat chart
+# (open-webui.image.tag) together whenever the chart dependency is bumped.
+#
+# Output: ghcr.io/ethpandaops/open-webui-cf:<ow_tag>-<sha>  (+ :<ow_tag>-latest)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - images/open-webui-cf/**
+      - .github/workflows/build-open-webui-cf.yml
+  workflow_dispatch:
+    inputs:
+      ow_tag:
+        description: 'Open-WebUI image tag to patch (must match chart appVersion)'
+        required: true
+        default: '0.9.5'
+
+env:
+  IMAGE: ghcr.io/ethpandaops/open-webui-cf
+  OW_TAG: ${{ github.event.inputs.ow_tag || '0.9.5' }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push
+        run: |
+          TAG="${OW_TAG}-${GITHUB_SHA::7}"
+          docker build \
+            --build-arg OW_TAG="${OW_TAG}" \
+            -t "${IMAGE}:${TAG}" \
+            -t "${IMAGE}:${OW_TAG}-latest" \
+            images/open-webui-cf
+          docker push "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:${OW_TAG}-latest"
+          echo "Pushed ${IMAGE}:${TAG} (+ ${OW_TAG}-latest)"

@@ -1,72 +1,23 @@
-# ethpandaops/chat — hermes-agent-panda
+# ethpandaops/chat
 
-The EthPandaOps devnet AI-chat **agent image**: NousResearch Hermes Agent + the
-`panda` CLI + `panda-server` + an in-container `dockerd` (for panda's Python
-sandbox), with the devnet **skill pack** baked in:
+EthPandaOps devnet AI-chat container images, published to GHCR and consumed by the
+[`panda-chat`](https://github.com/ethpandaops/ethereum-helm-charts) Helm chart
+(rendered per devnet by the `bal-devnets` ansible pipeline).
 
-- `skills/panda/` — query devnet analytics (Xatu/Prometheus/Loki/Dora/Ethnode),
-  scoped to `$DEVNET_NETWORK`.
-- `skills/faucet/` — fund accounts via the devnet powfaucet (`$DEVNET_FAUCET_URL`).
-- `skills/join-devnet/` — enodes/bootnodes/genesis/config (`$DEVNET_CONFIG_URL`)
-  and a ready-to-run client command.
-- `skills/eth-node/` — inspect the user's own node against the devnet.
+| Image | Path | Published to | What it is |
+|-------|------|--------------|------------|
+| **hermes-agent-panda** | [`images/hermes-agent-panda/`](images/hermes-agent-panda/) | `ghcr.io/ethpandaops/hermes-agent-panda` | NousResearch Hermes Agent + `panda` CLI/server + dockerd + the devnet skill pack (panda/faucet/join-devnet/eth-node). |
+| **open-webui-cf** | [`images/open-webui-cf/`](images/open-webui-cf/) | `ghcr.io/ethpandaops/open-webui-cf` | Open-WebUI patched to forward the `Cf-Access-Jwt-Assertion` header to the upstream model endpoint, so Hermes sees the individual Cloudflare-Access user (per-user auth + Langfuse attribution). |
 
-It also bundles the `langfuse` SDK so Hermes' `observability/langfuse` plugin can
-trace turns/LLM calls/tools when enabled (env `HERMES_LANGFUSE_PUBLIC_KEY`,
-`HERMES_LANGFUSE_SECRET_KEY`, `HERMES_LANGFUSE_BASE_URL`, `HERMES_LANGFUSE_ENV`).
-See `.env.example` for local runs.
+Each image builds and pushes via its own workflow under
+[`.github/workflows/`](.github/workflows/) (on changes under its `images/<name>/**`,
+or `workflow_dispatch`). See each image's README for build details.
 
-This image is consumed by the **`panda-chat`** Helm chart in
-[`ethpandaops/ethereum-helm-charts`](https://github.com/ethpandaops/ethereum-helm-charts)
-(`image.repository`), which the `bal-devnets` ansible pipeline renders per devnet.
-
-> This repo holds only the EthPandaOps-specific agent image + skills. The generic,
-> any-company chat platform (Open-WebUI + Hermes building blocks, multi-tenant org
-> model) is a separate lab repo and is **not** required to build or run this image.
-
-## Runtime contract
-
-The chart/entrypoint expect:
-
-- `/opt/data` PVC with `.config/panda/config.yaml` (seeded by the chart's
-  `seed-config` initContainer) and `.config/panda/credentials/<hash>.json`
-  (seeded by `seed-panda-creds` from the `chat` secret).
-- A **privileged** pod (dockerd needs root).
-- Env: `DEVNET_NETWORK`, `DEVNET_CHAIN_ID`, `DEVNET_FAUCET_URL`,
-  `DEVNET_CONFIG_URL`, `DEVNET_RPC_URL`, `DEVNET_EXPLORER_URL`, `PANDA_SERVER_URL`,
-  plus the model key (`$ANTHROPIC_API_KEY` or whatever `llm.apiKeyEnv` names).
-
-The entrypoint starts dockerd → pulls the sandbox image → starts panda-server →
-execs Hermes' upstream entrypoint (`gateway run`).
-
-## Build
-
-There is **no published upstream Hermes Agent image** — it's built from source.
-So the build is two steps: build a vanilla base from `NousResearch/hermes-agent`,
-then build this overlay `FROM` it.
-
-```bash
-# 1. vanilla Hermes base from upstream source
-git clone --depth 1 --branch v2026.6.5 \
-  https://github.com/NousResearch/hermes-agent.git hermes-agent
-docker build -t hermes-agent-base:2026.6.5 ./hermes-agent
-
-# 2. panda overlay (this repo)
-docker build \
-  --build-arg BASE_IMAGE=hermes-agent-base \
-  --build-arg BASE_TAG=2026.6.5 \
-  --build-arg PANDA_VERSION=0.31.0 \
-  -t ghcr.io/ethpandaops/hermes-agent-panda:2026.6.5 \
-  .
-```
-
-CI does both and pushes to GHCR — see [`.github/workflows/build.yml`](.github/workflows/build.yml)
-(runs on changes to `Dockerfile`, `entrypoint.sh`, `skills/**`, or via
-`workflow_dispatch` to pin the Hermes ref / panda version).
+> This repo holds only the EthPandaOps-specific images. The generic, any-company chat
+> *platform* (multi-tenant Open-WebUI + Hermes building blocks) is a separate lab repo
+> on `git.starflinger.eu` and is not needed to build or run these.
 
 ## Docs
 
-- [`docs/panda-bot-setup.md`](docs/panda-bot-setup.md) — provisioning the panda
-  bot identity (GitHub bot user + `panda auth login`).
-- [`docs/panda-integration-plan.md`](docs/panda-integration-plan.md) — how panda,
-  panda-server and the sandbox fit together.
+- [`docs/panda-bot-setup.md`](docs/panda-bot-setup.md) — provisioning the panda bot identity.
+- [`docs/panda-integration-plan.md`](docs/panda-integration-plan.md) — how panda, panda-server and the sandbox fit together.

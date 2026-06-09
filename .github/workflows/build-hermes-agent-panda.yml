@@ -1,4 +1,4 @@
-name: build
+name: build-hermes-agent-panda
 
 # Builds the hermes-agent-panda image and pushes it to GHCR.
 #
@@ -13,10 +13,8 @@ on:
   push:
     branches: [main]
     paths:
-      - Dockerfile
-      - entrypoint.sh
-      - skills/**
-      - .github/workflows/build.yml
+      - images/hermes-agent-panda/**
+      - .github/workflows/build-hermes-agent-panda.yml
   workflow_dispatch:
     inputs:
       hermes_ref:
@@ -71,7 +69,7 @@ jobs:
             --build-arg PANDA_VERSION="${PANDA_VERSION}" \
             -t "${IMAGE}:${TAG}" \
             -t "${IMAGE}:latest" \
-            .
+            images/hermes-agent-panda
           docker push "${IMAGE}:${TAG}"
           docker push "${IMAGE}:latest"
           echo "Pushed ${IMAGE}:${TAG} (+ :latest)"
