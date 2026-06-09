@@ -7,7 +7,7 @@
 # (tag = BASE_TAG) into a local `hermes-agent-base:<tag>` first, then builds this
 # overlay FROM it. For a local build, build that base yourself (see README).
 ARG BASE_IMAGE=hermes-agent-base
-ARG BASE_TAG=0.11.0
+ARG BASE_TAG=2026.6.5
 FROM ${BASE_IMAGE}:${BASE_TAG}
 
 USER root

@@ -22,11 +22,11 @@ on:
       hermes_ref:
         description: 'NousResearch/hermes-agent git ref to build the base from'
         required: true
-        default: 'v0.11.0'
+        default: 'v2026.6.5'
       base_tag:
         description: 'Base/overlay version tag (no "v" prefix)'
         required: true
-        default: '0.11.0'
+        default: '2026.6.5'
       panda_version:
         description: 'panda CLI + panda-server release version'
         required: true
@@ -34,8 +34,8 @@ on:
 
 env:
   IMAGE: ghcr.io/ethpandaops/hermes-agent-panda
-  HERMES_REF: ${{ github.event.inputs.hermes_ref || 'v0.11.0' }}
-  BASE_TAG: ${{ github.event.inputs.base_tag || '0.11.0' }}
+  HERMES_REF: ${{ github.event.inputs.hermes_ref || 'v2026.6.5' }}
+  BASE_TAG: ${{ github.event.inputs.base_tag || '2026.6.5' }}
   PANDA_VERSION: ${{ github.event.inputs.panda_version || '0.31.0' }}
 
 jobs:

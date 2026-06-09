@@ -47,16 +47,16 @@ then build this overlay `FROM` it.
 
 ```bash
 # 1. vanilla Hermes base from upstream source
-git clone --depth 1 --branch v0.11.0 \
+git clone --depth 1 --branch v2026.6.5 \
   https://github.com/NousResearch/hermes-agent.git hermes-agent
-docker build -t hermes-agent-base:0.11.0 ./hermes-agent
+docker build -t hermes-agent-base:2026.6.5 ./hermes-agent
 
 # 2. panda overlay (this repo)
 docker build \
   --build-arg BASE_IMAGE=hermes-agent-base \
-  --build-arg BASE_TAG=0.11.0 \
+  --build-arg BASE_TAG=2026.6.5 \
   --build-arg PANDA_VERSION=0.31.0 \
-  -t ghcr.io/ethpandaops/hermes-agent-panda:0.11.0 \
+  -t ghcr.io/ethpandaops/hermes-agent-panda:2026.6.5 \
   .
 ```
 
