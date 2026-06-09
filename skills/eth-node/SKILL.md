@@ -3,6 +3,11 @@ name: eth-node
 description: "Query the devnet's execution and consensus nodes directly via JSON-RPC and beacon REST API using DEVNET_RPC_URL and DEVNET_CL_URL."
 version: 0.1.0
 platforms: [linux]
+required_environment_variables:
+  - DEVNET_RPC_URL
+  - DEVNET_CL_URL
+  - DEVNET_NETWORK
+  - DEVNET_CHAIN_ID
 metadata:
   hermes:
     tags: [ethereum, devnet, rpc, beacon, block, slot, finality, sync, validators, eth-node]
