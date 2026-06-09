@@ -1,0 +1,5 @@
+# Local-run secrets — never commit. Use .env.example as the template.
+.env
+
+# Upstream Hermes source cloned during a local base build.
+/hermes-agent/
