@@ -29,12 +29,14 @@ This image is consumed by the **`panda-chat`** Helm chart in
 The chart/entrypoint expect:
 
 - `/opt/data` PVC with `.config/panda/config.yaml` (seeded by the chart's
-  `seed-config` initContainer) and `.config/panda/credentials/<hash>.json`
-  (seeded by `seed-panda-creds` from the `chat` secret).
+  `seed-config` initContainer).
 - A **privileged** pod (dockerd needs root).
 - Env: `DEVNET_NETWORK`, `DEVNET_CHAIN_ID`, `DEVNET_FAUCET_URL`,
   `DEVNET_CONFIG_URL`, `DEVNET_RPC_URL`, `DEVNET_EXPLORER_URL`, `PANDA_SERVER_URL`,
-  plus the model key (`$ANTHROPIC_API_KEY` or whatever `llm.apiKeyEnv` names).
+  `PANDA_BOT_USERNAME` / `PANDA_BOT_TOKEN` (the Authentik service-account
+  identity panda-server mints client_credentials proxy tokens with — no
+  credential files on the PVC), plus the model key (`$ANTHROPIC_API_KEY` or
+  whatever `llm.apiKeyEnv` names).
 
 The entrypoint starts dockerd → pulls the sandbox image → starts panda-server →
 execs Hermes' upstream entrypoint (`gateway run`).
@@ -67,6 +69,8 @@ CI does both and pushes to GHCR — see [`.github/workflows/build.yml`](.github/
 ## Docs
 
 - [`docs/panda-bot-setup.md`](docs/panda-bot-setup.md) — provisioning the panda
-  bot identity (GitHub bot user + `panda auth login`).
+  bot identity (Authentik service account + app password).
+- [`docs/identity-and-attribution-plan.md`](docs/identity-and-attribution-plan.md)
+  — bot identity at the proxy, per-user attribution at the chat layer.
 - [`docs/panda-integration-plan.md`](docs/panda-integration-plan.md) — how panda,
   panda-server and the sandbox fit together.
