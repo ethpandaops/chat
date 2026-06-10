@@ -53,11 +53,13 @@ sanity check). For production, promote and set the value in the
 production secrets file the same way (use a **different** value per
 environment).
 
-Sanity-check it mints a proxy-accepted token:
+Sanity-check it mints a proxy-accepted token. Note the token endpoint is
+Authentik-global (`/application/o/token/`), NOT under the per-app issuer
+path — `<issuer>token/` returns 405. (panda itself gets this right by
+reading `token_endpoint` from the issuer's OIDC discovery document.)
 
 ```bash
-ISSUER=https://authentik.analytics.staging.platform.ethpandaops.io/application/o/panda-proxy/
-ACCESS=$(curl -sf "${ISSUER}token/" \
+ACCESS=$(curl -sf "https://authentik.analytics.staging.platform.ethpandaops.io/application/o/token/" \
   -d grant_type=client_credentials \
   -d client_id=panda-proxy \
   -d username=panda-chat-svc \
