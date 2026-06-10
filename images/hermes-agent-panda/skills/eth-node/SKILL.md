@@ -1,44 +1,49 @@
 ---
 name: eth-node
-description: "Query the devnet's execution and consensus nodes directly via JSON-RPC and beacon REST API using DEVNET_RPC_URL and DEVNET_CL_URL."
-version: 0.1.0
+description: "Query the devnet's execution and consensus nodes directly via JSON-RPC, beacon REST API, and Dora explorer API using DEVNET_RPC_URL, DEVNET_CL_URL, and DEVNET_DORA_URL."
+version: 0.2.0
 platforms: [linux]
 required_environment_variables:
   - DEVNET_RPC_URL
   - DEVNET_CL_URL
   - DEVNET_NETWORK
   - DEVNET_CHAIN_ID
+  - DEVNET_DORA_URL
+  - DEVNET_GRAFANA_URL
+  - DEVNET_PROMETHEUS_URL
 metadata:
   hermes:
-    tags: [ethereum, devnet, rpc, beacon, block, slot, finality, sync, validators, eth-node]
+    tags: [ethereum, devnet, rpc, beacon, block, slot, finality, sync, validators, dora, eth-node]
 ---
 
-# eth-node — direct EL/CL node queries for this devnet
+# eth-node — direct EL/CL/Dora queries for this devnet
 
-Use this skill for **real-time, low-latency devnet state** questions:
-current block, slot, sync status, head finality, peer counts, validator
-queue, fork choice, single-block details. This skill hits the nodes directly
-via HTTP; no panda-server or sandbox needed.
+Use this skill for **real-time devnet state** questions: current block, slot,
+sync status, head finality, peer counts, validator queue, block details, Dora
+explorer data. Hits nodes and explorers directly via HTTP — no panda-server needed.
 
 ## Environment
 
-| Variable | Value | Purpose |
-|---|---|---|
-| `DEVNET_RPC_URL` | e.g. `http://el-1-geth-lighthouse:8545` | EL JSON-RPC |
-| `DEVNET_CL_URL` | e.g. `http://cl-1-lighthouse-geth:4000` | CL beacon REST |
-| `DEVNET_NETWORK` | e.g. `kurtosis` | Network name |
+| Variable | Purpose |
+|---|---|
+| `DEVNET_RPC_URL` | EL JSON-RPC (e.g. `http://el-1-geth-lighthouse:8545`) |
+| `DEVNET_CL_URL` | CL beacon REST (e.g. `http://cl-1-lighthouse-geth:4000`) |
+| `DEVNET_DORA_URL` | Dora explorer API (e.g. `http://dora:8080`) — empty if not running |
+| `DEVNET_GRAFANA_URL` | Grafana — empty if not running |
+| `DEVNET_PROMETHEUS_URL` | Prometheus — empty if not running |
+| `DEVNET_NETWORK` | Network name (e.g. `kurtosis`) |
 
 ## Execution pattern
 
-Always use `execute_code` with Python — do NOT use the terminal for these
-queries (the security scanner prompts for HTTP URLs in shell, but Python
-requests are pre-approved for known devnet endpoints).
+Always use `execute_code` with Python — do NOT use the terminal for HTTP queries
+(the security scanner prompts for HTTP URLs in shell).
 
 ```python
 import os, requests
 
-rpc = os.environ.get("DEVNET_RPC_URL", "http://localhost:8545")
-cl  = os.environ.get("DEVNET_CL_URL",  "http://localhost:4000")
+rpc  = os.environ.get("DEVNET_RPC_URL", "http://localhost:8545")
+cl   = os.environ.get("DEVNET_CL_URL",  "http://localhost:4000")
+dora = os.environ.get("DEVNET_DORA_URL", "")
 
 def rpc_call(method, params=None):
     r = requests.post(rpc, json={"jsonrpc":"2.0","method":method,"params":params or [],"id":1}, timeout=5)
@@ -49,14 +54,20 @@ def beacon_get(path):
     r = requests.get(f"{cl}{path}", headers={"Accept":"application/json"}, timeout=5)
     r.raise_for_status()
     return r.json().get("data")
+
+def dora_get(path):
+    if not dora:
+        return None
+    r = requests.get(f"{dora}{path}", headers={"Accept":"application/json"}, timeout=5)
+    r.raise_for_status()
+    return r.json()
 ```
 
-## Common queries
+## EL / CL queries
 
 ### Current block and slot
 ```python
-block_hex = rpc_call("eth_blockNumber")
-block_num  = int(block_hex, 16)
+block_num = int(rpc_call("eth_blockNumber"), 16)
 print("EL head block:", block_num)
 
 head = beacon_get("/eth/v1/beacon/headers/head")
@@ -65,11 +76,8 @@ print("CL head slot:", head["header"]["message"]["slot"])
 
 ### Sync status
 ```python
-sync = rpc_call("eth_syncing")
-print("EL syncing:", sync)   # False = in sync
-
-cl_sync = beacon_get("/eth/v1/node/syncing")
-print("CL syncing:", cl_sync)
+print("EL syncing:", rpc_call("eth_syncing"))   # False = in sync
+print("CL syncing:", beacon_get("/eth/v1/node/syncing"))
 ```
 
 ### Finality checkpoints
@@ -81,9 +89,7 @@ print("Finalized epoch:", fin["finalized"]["epoch"])
 
 ### Peer counts
 ```python
-el_peers = rpc_call("net_peerCount")
-print("EL peers:", int(el_peers, 16))
-
+print("EL peers:", int(rpc_call("net_peerCount"), 16))
 cl_peers = beacon_get("/eth/v1/node/peer_count")
 print("CL peers connected:", cl_peers["connected"])
 ```
@@ -96,30 +102,59 @@ print("Gas used:", int(block["gasUsed"], 16))
 print("Tx count:", len(block["transactions"]))
 ```
 
-### Validator count
+### Active validators
 ```python
 validators = beacon_get("/eth/v1/beacon/states/head/validators?status=active_ongoing")
 print("Active validators:", len(validators))
 ```
 
+## Dora explorer queries
+
+Check `DEVNET_DORA_URL` is set before using Dora. Dora exposes a REST API at `/api/v1/`.
+
+### Epoch summary
+```python
+data = dora_get("/api/v1/epoch/latest")
+if data:
+    print("Latest epoch:", data)
+```
+
+### Recent slots / blocks
+```python
+data = dora_get("/api/v1/slots?limit=10")
+if data:
+    for slot in data.get("data", []):
+        print(slot)
+```
+
+### Validator list
+```python
+data = dora_get("/api/v1/validators?limit=20")
+if data:
+    for v in data.get("data", []):
+        print(v["index"], v["status"])
+```
+
+### Discover Dora API routes
+If unsure of the path, fetch the Dora home page or try `/api/v1/` to see available endpoints.
+
 ## When to use panda instead
 
-Use the `panda` skill (not this one) when the user asks for:
-- **Historical / aggregated data** (e.g. block production over the last 24 h)
-- **Cross-validator analysis** (attestation performance, missed proposals)
+Use the `panda` skill when the user asks for:
+- **Historical / aggregated data** (block production over time, missed proposals)
 - **Xatu / ClickHouse** queries
-- **Prometheus metrics** (CPU, memory, network)
+- **Prometheus metrics** (CPU, memory, network) — or query `DEVNET_PROMETHEUS_URL` directly
 - **Loki logs**
 
-panda has much richer data once the network has been running long enough for
-data to flow into the analytics stack. For a brand-new network use this skill
-until panda has data.
+panda has much richer data once the network has been running long enough for data
+to flow into the analytics stack. For a brand-new network use this skill.
 
 ## Error handling
 
 | Error | Likely cause | Fix |
 |---|---|---|
 | `Connection refused` | Node not started yet | Wait and retry |
-| `timeout` | Node overloaded or restarting | Retry after a few seconds |
-| `KeyError: result` | RPC error response | Print full `r.json()` to see the error message |
-| `404` on beacon path | Wrong path or old CL version | Check `/eth/v1/node/version` first |
+| `timeout` | Node overloaded | Retry after a few seconds |
+| `KeyError: result` | RPC error | Print full `r.json()` to inspect |
+| `404` on beacon path | Wrong path | Check `/eth/v1/node/version` first |
+| `dora_get` returns `None` | Dora not running | Tell user Dora is not in this enclave |

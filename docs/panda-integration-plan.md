@@ -5,6 +5,15 @@ Hermes agent via the panda CLI and a local panda-server, all inside one
 container. Targets the org `ethpandaops`; the per-org overlay mechanism
 already on `qu0b/per-org-hermes-builds` carries it.
 
+> **Superseded in part by
+> [`identity-and-attribution-plan.md`](identity-and-attribution-plan.md):**
+> the bot identity is now an Authentik *service account* using the
+> `client_credentials` grant (no GitHub bot user, no seeded
+> `credentials.json`, no refresh-token rotation). Sections below that
+> described the old identity flow (§3.2 config, §5 setup, §6 rotation,
+> the §2 diagram, parts of §11) have been updated; the fat-container,
+> sandbox, and chart shape all still stand.
+
 ---
 
 ## 1. Summary
@@ -13,14 +22,15 @@ For orgs that opt in, the Hermes container becomes a **fat container**:
 it carries Hermes + `panda` CLI + `panda-server` + a Docker daemon for
 the panda Python sandbox. The container is privileged. Outbound, it
 authenticates to the hosted `panda-proxy.analytics.production.platform.ethpandaops.io`
-as **a single bot identity per org** — credentials seeded at deploy time
-from a SOPS-encrypted `credentials.json`. All chat users in the org
-share that identity at the proxy. Per-user attribution stays at the
-chat layer.
+as **a single bot identity per deployment** — an Authentik service
+account whose app password is injected from SOPS as env; panda-server
+mints proxy access tokens from it on demand (client_credentials). All
+chat users share that identity at the proxy. Per-user attribution stays
+at the chat layer.
 
 This is the minimum viable shape. It uses panda as designed (CLI → local
-server → hosted proxy). No upstream changes. Re-auth every ~30 days when
-the refresh token expires.
+server → hosted proxy). No re-auth cadence: the app password does not
+expire and access tokens are re-minted automatically.
 
 ---
 
@@ -40,22 +50,20 @@ the refresh token expires.
 │  │   /opt/data (PVC)                                        │   │
 │  │     ├── hermes state.db, honcho/                         │   │
 │  │     ├── .config/panda/config.yaml                        │   │
-│  │     ├── .config/panda/credentials/<hash>.json            │   │
 │  │     └── panda-storage/  (sandbox outputs, embedding $$)  │   │
+│  │                                                          │   │
+│  │   env: PANDA_BOT_USERNAME / PANDA_BOT_TOKEN (Secret)     │   │
 │  │                                                          │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                              │                                  │
 │  ┌──── initContainer: seed-config (existing) ──────────────┐    │
-│  │   Copy hermes config.yaml from ConfigMap to PVC         │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│  ┌──── initContainer: seed-panda-creds (new) ──────────────┐    │
-│  │   Decode org-secrets.PANDA_CONFIG_YAML      → /opt/data │    │
-│  │          org-secrets.PANDA_CREDENTIALS_JSON → /opt/data │    │
-│  │   Idempotent: writes only if absent / newer.            │    │
+│  │   Copy hermes + panda config.yaml from ConfigMap to PVC │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
                               │
-                              │ HTTPS, Bearer <bot's Dex JWT>
+                              │ HTTPS, Bearer <access token minted via
+                              │ client_credentials from Authentik;
+                              │ cached in memory, re-minted on expiry>
                               ▼
                 hosted panda-proxy (UNCHANGED)
                               │
@@ -63,11 +71,13 @@ the refresh token expires.
                 Xatu / Prometheus / Loki / Ethnode
 ```
 
-**Identity model**: the bot is a real GitHub user (e.g.
-`ethpandaops-chat-bot`) added to the ethpandaops org with whatever team
-membership is needed to satisfy the proxy's per-datasource
-`allowed_orgs`. Auth flow uses panda's existing OIDC-via-Dex
-machinery. The proxy validates as it does for any other panda user.
+**Identity model**: the bot is an Authentik **service account**
+(`panda-chat-svc`, member of the `panda-chat` group only) with a
+non-expiring app password. panda-server mints proxy access tokens from
+the Authentik token endpoint via the `client_credentials` grant. The
+proxy validates them as it does any other Authentik-issued token; the
+bot lands in the external datasource tier (no org-mirror groups). See
+[`identity-and-attribution-plan.md`](identity-and-attribution-plan.md).
 
 **Why not per-user identity at the proxy**: the data behind the proxy
 is read-only org data with team-level (not user-level) ACLs. Per-user
@@ -103,9 +113,10 @@ container start**, not baked. Reasons:
 
 ### 3.2 panda-server config (`/opt/data/.config/panda/config.yaml`)
 
-Seeded by the new initContainer from `org-secrets.PANDA_CONFIG_YAML`.
-Generated once during the bot-setup procedure (§5) so it matches the
-credentials file's namespacing. Roughly:
+Rendered by the panda-chat chart's ConfigMap and seeded onto the PVC by
+the `seed-config` initContainer. The bot identity comes from env
+(`${...}` is panda's config-loader env substitution), so the config
+itself is not secret:
 
 ```yaml
 server:
@@ -116,7 +127,7 @@ server:
 
 sandbox:
   backend: docker
-  image: ethpandaops/panda:sandbox-0.24.0
+  image: ethpandaops/panda:sandbox-<ver>
   network: "bridge"
   timeout: 300
   memory_limit: "1g"
@@ -128,9 +139,11 @@ storage:
 proxy:
   url: "https://panda-proxy.analytics.production.platform.ethpandaops.io"
   auth:
-    mode: "oidc"
-    issuer_url: "https://dex.primary.production.platform.ethpandaops.io"
+    mode: "client_credentials"
+    issuer_url: "https://authentik.analytics.production.platform.ethpandaops.io/application/o/panda-proxy/"
     client_id: "panda-proxy"
+    username: "${PANDA_BOT_USERNAME}"
+    password: "${PANDA_BOT_TOKEN}"
 ```
 
 ### 3.3 Container startup
@@ -187,9 +200,8 @@ on failure is enough).
 ├── honcho/                   # hermes memory — existing
 ├── config.yaml               # hermes — existing
 ├── .config/panda/
-│   ├── config.yaml           # panda-server config (seeded by initContainer)
-│   └── credentials/
-│       └── <hash>.json       # bot tokens (seeded by initContainer)
+│   └── config.yaml           # panda-server config (seeded by initContainer;
+│                             # no credentials/ — tokens are minted in memory)
 └── panda-storage/            # sandbox outputs, embedding cache, sessions
     ├── files/
     └── sessions/
@@ -219,6 +231,17 @@ problem.
 ---
 
 ## 4. File-by-file changes in `ethpandaops/chat`
+
+> **Historical** — this section describes the original `orgs/<slug>` /
+> org-stack layout and the seeded-credentials flow. The credential
+> pieces (§4.3's `seed-panda-creds` initContainer, §4.5's
+> `PANDA_CONFIG_YAML` / `PANDA_CREDENTIALS_*` SOPS keys) are
+> **superseded** by the service-account flow
+> ([`identity-and-attribution-plan.md`](identity-and-attribution-plan.md)):
+> the chart renders the panda config itself and the only secrets are
+> `PANDA_BOT_USERNAME` / `PANDA_BOT_TOKEN`. The image/entrypoint/chart
+> shape otherwise landed as described, in `images/hermes-agent-panda/`
+> and the `panda-chat` chart (ethereum-helm-charts).
 
 ### 4.1 `orgs/ethpandaops/image/Dockerfile` (replace)
 
@@ -391,74 +414,60 @@ who runs it can be pointed at one short doc.
 
 ---
 
-## 5. One-time setup procedure (per org)
+## 5. One-time setup procedure
 
-Per org, performed by an operator with: (a) GitHub-org-admin rights on
-`ethpandaops`, (b) sops-edit rights on the org's SOPS Secret.
+> Rewritten for the Authentik service-account identity; the GitHub
+> bot-user + `panda auth login` procedure that used to live here is
+> obsolete. Full runbook: [`panda-bot-setup.md`](panda-bot-setup.md).
+
+Performed by an operator with: (a) Authentik admin access, (b) sops-edit
+rights on the devnet secrets.
 
 ```text
-1. CREATE BOT USER
-   In GitHub: create user `ethpandaops-<slug>-chat-bot`
-   (or similar), enable 2FA, store the password in 1Password.
-   Add to `ethpandaops` org with the team(s) whose data the chat
-   should access (matching panda-proxy's allowed_orgs entries).
+1. DEPLOY THE BLUEPRINT (platform repo)
+   environments/<env>/applications/authentik/.../blueprints-configmap.yaml
+   defines: group panda-chat (bound to the panda-proxy application),
+   service account panda-chat-svc, non-expiring app-password token
+   panda-chat-svc-token.
 
-2. RUN panda init + auth login LOCALLY
-   On the operator's laptop:
+2. RETRIEVE THE APP PASSWORD
+   Authentik UI → Directory → Tokens and App passwords →
+   panda-chat-svc-token → copy key.
 
-     $ panda init --proxy-url https://panda-proxy.analytics.production.platform.ethpandaops.io
-     $ panda auth login --headless
-     [device flow URL — the operator opens it AS THE BOT user]
+3. SEED THE SOPS SECRET
+   In the devnet's services.enc.yaml under #chat:
+     panda_bot_username = panda-chat-svc
+     panda_bot_token    = <app password>
 
-3. EXTRACT THE OUTPUTS
+4. ENABLE THE AGENT
+   Devnet chat values (rendered by ansible) — the chart maps the SOPS
+   keys to credentials.panda.botUsername / botToken and renders the
+   client_credentials proxy.auth block into panda-config.yaml.
 
-     $ cat ~/.config/panda/config.yaml
-     $ ls   ~/.config/panda/credentials/
-     <hash>.json
-     $ cat ~/.config/panda/credentials/<hash>.json
-
-4. SEED THE SOPS SECRET
-   In orgs/<slug>/sopssecrets/org-secrets.sops.yaml, add:
-     PANDA_CONFIG_YAML       = contents of step 3's config.yaml
-     PANDA_CREDENTIALS_FILE  = the <hash>.json filename verbatim
-     PANDA_CREDENTIALS_JSON  = contents of <hash>.json
-
-5. ENABLE THE AGENT
-   In orgs/<slug>/values.yaml, set `agents[0].panda.enabled: true`.
-   Bump hermes_defaults.persistence.size to 8Gi.
-   Bump hermes_defaults.image.tag to a SHA-pinned overlay build that
-   has the new Dockerfile (build via build-hermes-agent-orgs.yml).
-
-6. COMMIT + PUSH + WAIT FOR ARGOCD
+5. COMMIT + PUSH + WAIT FOR ARGOCD
    Within ~3 minutes the pod rolls. Check:
-     kubectl -n org-<slug> logs deploy/<release>-hermes-general -c hermes
+     kubectl -n <ns> logs deploy/<release>-hermes -c hermes
      # expect: dockerd-ready, panda-server-ready, hermes-ready
 
-7. SMOKE TEST
-   Open the chat at <hostname>. Ask: "what's mainnet's recent finality?"
+6. SMOKE TEST
+   Open the chat at <hostname>. Ask a panda-backed question.
    Expect: agent shells out to `panda execute`, returns numbers.
 ```
 
 ---
 
-## 6. Refresh-token rotation (~every 30 days)
+## 6. Token lifecycle (superseded: no rotation)
 
-The Dex-issued refresh token expires every **720h** (`panda-proxy`
-production config). When it expires, panda-server starts returning
-auth errors and the agent surfaces them.
+> The 30-day refresh-token rotation playbook that used to live here is
+> obsolete — there are no refresh tokens anymore.
 
-Rotation playbook:
-
-```text
-1. On laptop:  panda auth login --headless   (as the bot user)
-2. Replace PANDA_CREDENTIALS_JSON in the SOPS Secret.
-3. Commit, push. ArgoCD reconciles. The initContainer overwrites
-   /opt/data/.config/panda/credentials/<hash>.json on next pod restart.
-4. Force-restart:  kubectl -n org-<slug> rollout restart deploy/<release>-hermes-general
-```
-
-Automate later with a CronJob that does the device-flow refresh
-using a long-lived bot PAT — not in scope for v1.
+panda-server mints a fresh access token (Authentik validity 1h) from
+the non-expiring app password whenever the cached one approaches
+expiry, entirely in memory. The only operator action left is
+**revocation on suspected leak**: delete the `panda-chat-svc-token`
+app password in Authentik (immediate), create a replacement, update
+`services.enc.yaml#chat.panda_bot_token`, re-roll. See
+[`panda-bot-setup.md`](panda-bot-setup.md).
 
 ---
 
@@ -508,8 +517,8 @@ Tunable per-org via `hermes_defaults.resources`.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Hermes pod stuck in startupProbe | dockerd failed | `kubectl logs … -c hermes` → grep dockerd.log; common: missing `privileged: true` |
-| `panda execute` → "no server URL configured" | initContainer didn't seed config.yaml | Check `PANDA_CONFIG_YAML` is set in `org-secrets`; restart pod |
-| `panda execute` → 401 unauthorized | Refresh token expired | Run §6 rotation playbook |
+| `panda execute` → "no server URL configured" | initContainer didn't seed config.yaml | Check the seed-config initContainer logs; restart pod |
+| `panda execute` → 401 unauthorized | Bot app password wrong or revoked | Re-seed `services.enc.yaml#chat.panda_bot_token` (see §6 / panda-bot-setup.md) |
 | `panda execute` → "unsupported sandbox backend" | Sandbox image not pulled / dockerd unhealthy | `kubectl exec … docker ps`; manually `docker pull ethpandaops/panda:sandbox-<ver>` |
 | Sandbox container crashes immediately | Sandbox image version mismatch with panda-server | Confirm `sandbox.image` in config.yaml matches a published tag at `ethpandaops/panda:sandbox-*` |
 | OOM on Hermes pod | Concurrent sandboxes | Bump `hermes_defaults.resources.limits.memory`; consider `sandbox.max_sessions` |
@@ -518,15 +527,24 @@ Tunable per-org via `hermes_defaults.resources`.
 
 ## 9. Security model & blast radius
 
-**Privileged container in the org's namespace**. The fat container has
-`privileged: true` (required for dockerd). What this exposes:
+**[Superseded: container split.]** The fat container originally ran
+Hermes + panda-server + dockerd in one privileged container. The
+panda-chat chart now splits the pod: an unprivileged `hermes` container
+(uid 10000, caps dropped, no bot credential, no docker socket) and a
+privileged `panda-server` sidecar (dockerd) that alone holds
+`PANDA_BOT_USERNAME`/`PANDA_BOT_TOKEN` in a dedicated Secret. What the
+privileged sidecar still exposes:
 
-- Anyone with `exec` rights into the pod can break out to the node.
+- Anyone with `exec` rights into the sidecar can break out to the node.
   Mitigation: RBAC restricts pod exec to platform admins.
 - A compromise of the panda-server process (e.g., RCE in a sandbox
   callback handler) gives shell + dockerd, i.e., root on the node.
   Mitigation: panda-server is a thin, well-reviewed Go binary; the
   attack surface is the sandbox-callback HTTP API.
+- Hermes (the LLM-driven shell executor) can no longer read the bot
+  credential or the docker socket; it can still *use* panda-server over
+  127.0.0.1 (confused-deputy — bounded by the bot's external-tier,
+  read-only proxy access).
 
 **NetworkPolicy** (new — add to `charts/org-stack/templates/`):
 - Ingress to the Hermes pod: only from the LibreChat pod in the same
@@ -536,16 +554,15 @@ Tunable per-org via `hermes_defaults.resources`.
   (this matters because dockerd-spawned sandbox containers inherit the
   pod's egress and could otherwise call out arbitrarily).
 
-**Bot user scope**: the GitHub bot user is added to teams **only those
-necessary for the datasources chat needs**. Don't add it to `Core` or
-any admin team. If a team grants admin access to other infrastructure,
-do NOT add the bot user to that team.
+**Bot identity scope**: the Authentik service account is a member of
+the `panda-chat` group **only** — no org-mirror groups, so no internal
+ClickHouse tier and no platform prometheus. Never add it to other
+groups.
 
-**Token rotation**: refresh tokens last 30 days. Compromise of the SOPS
-Secret discloses a refresh token that can mint Dex access tokens for
-~that long. Rotating the bot user's GitHub credentials revokes all its
-Dex sessions; rotating the SOPS Secret + restarting the pod replaces
-the disclosed token.
+**Token compromise**: the app password in SOPS is non-expiring; a leak
+grants external-tier read-only proxy access until the
+`panda-chat-svc-token` app password is deleted in Authentik (immediate,
+one click). Access tokens themselves live 1h and only in pod memory.
 
 ---
 
@@ -570,15 +587,15 @@ ArgoCD.
 
 ## 11. What's deferred (not in scope for v1)
 
-- **Per-user identity at panda-proxy.** Today: one bot identity per
-  org. If a future use case requires per-user RBAC at the proxy, that
-  needs upstream changes to panda CLI (token-per-call) + panda-server
-  (statelessness) + a way to forward the user's Dex JWT from LibreChat
-  through Hermes. Substantial; revisit only when an actual requirement
-  surfaces.
-- **CronJob refresh automation.** Today: operator runs the §6 playbook
-  every ~30 days. A scheduled job that uses a long-lived bot PAT to
-  refresh the Dex tokens silently is feasible but adds moving parts.
+- **Per-user identity at panda-proxy.** Decided against — see
+  [`identity-and-attribution-plan.md`](identity-and-attribution-plan.md)
+  §1 ("Explicitly rejected"). One bot identity per deployment at the
+  proxy; per-user attribution lives at the Hermes/Langfuse layer
+  (`user_id` on traces, `X-Panda-On-Behalf-Of` audit header). Revisit
+  only if a datasource ever distinguishes *users* rather than *teams*.
+- ~~**CronJob refresh automation.**~~ Obsolete: there is no refresh
+  cadence to automate — the service account's app password does not
+  expire and access tokens are re-minted in memory.
 - **gVisor (runsc) sandbox.** Today: `sandbox.backend: docker`. gVisor
   is stronger but requires runsc to be installed inside the fat
   container alongside dockerd. Tractable, but not v1.

@@ -26,18 +26,26 @@ This image is consumed by the **`panda-chat`** Helm chart in
 
 ## Runtime contract
 
-The chart/entrypoint expect:
+The image runs as **two containers from the same image** (panda-chat chart),
+dispatched by the entrypoint's first arg:
 
-- `/opt/data` PVC with `.config/panda/config.yaml` (seeded by the chart's
-  `seed-config` initContainer) and `.config/panda/credentials/<hash>.json`
-  (seeded by `seed-panda-creds` from the `chat` secret).
-- A **privileged** pod (dockerd needs root).
-- Env: `DEVNET_NETWORK`, `DEVNET_CHAIN_ID`, `DEVNET_FAUCET_URL`,
-  `DEVNET_CONFIG_URL`, `DEVNET_RPC_URL`, `DEVNET_EXPLORER_URL`, `PANDA_SERVER_URL`,
-  plus the model key (`$ANTHROPIC_API_KEY` or whatever `llm.apiKeyEnv` names).
+- `hermes` container — entrypoint args `gateway run` (or anything ≠
+  `panda-stack`): execs Hermes' upstream entrypoint. **Unprivileged**
+  (uid 10000, caps dropped). Env: `DEVNET_NETWORK`, `DEVNET_CHAIN_ID`,
+  `DEVNET_FAUCET_URL`, `DEVNET_CONFIG_URL`, `DEVNET_RPC_URL`,
+  `DEVNET_EXPLORER_URL`, `PANDA_SERVER_URL`, plus the model key
+  (`$ANTHROPIC_API_KEY` or whatever `llm.apiKeyEnv` names). It must NOT
+  receive the bot credential — Hermes executes LLM-driven shell commands.
+- `panda-server` container — entrypoint arg `panda-stack`: starts dockerd →
+  pulls the sandbox image → execs panda-server in the foreground.
+  **Privileged** (dockerd needs root) and the only container with
+  `PANDA_BOT_USERNAME` / `PANDA_BOT_TOKEN` (the Authentik service-account
+  identity panda-server mints client_credentials proxy tokens with — no
+  credential files on the PVC).
 
-The entrypoint starts dockerd → pulls the sandbox image → starts panda-server →
-execs Hermes' upstream entrypoint (`gateway run`).
+Both mount the `/opt/data` PVC with `.config/panda/config.yaml` (seeded by
+the chart's `seed-config` initContainer); they share the pod network
+namespace, so Hermes reaches panda-server on `127.0.0.1:2480`.
 
 ## Build
 
@@ -67,6 +75,8 @@ CI does both and pushes to GHCR — see [`.github/workflows/build.yml`](.github/
 ## Docs
 
 - [`docs/panda-bot-setup.md`](docs/panda-bot-setup.md) — provisioning the panda
-  bot identity (GitHub bot user + `panda auth login`).
+  bot identity (Authentik service account + app password).
+- [`docs/identity-and-attribution-plan.md`](docs/identity-and-attribution-plan.md)
+  — bot identity at the proxy, per-user attribution at the chat layer.
 - [`docs/panda-integration-plan.md`](docs/panda-integration-plan.md) — how panda,
   panda-server and the sandbox fit together.

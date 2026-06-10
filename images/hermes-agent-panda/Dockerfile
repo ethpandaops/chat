@@ -19,6 +19,11 @@ RUN apt-get update && \
       curl yq jq && \
     rm -rf /var/lib/apt/lists/*
 
+# TODO(panda release): bump to the first panda release that ships the
+# client_credentials proxy auth mode (branch qu0b/panda-client-credentials,
+# i.e. > v0.31.0). The panda-chat chart >= 0.2.0 renders proxy.auth.mode
+# "client_credentials", which v0.31.0 rejects — do not roll that chart with
+# an image built from this tag.
 ARG PANDA_VERSION=0.31.0
 
 # panda CLI
