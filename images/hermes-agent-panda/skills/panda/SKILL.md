@@ -1,7 +1,7 @@
 ---
 name: panda
 description: "Query Ethereum devnet analytics (Xatu ClickHouse, Prometheus, Loki, beacon/exec nodes) by running Python in a sandboxed environment via the panda CLI. Scoped to this devnet."
-version: 0.2.0
+version: 0.3.0
 platforms: [linux]
 metadata:
   hermes:
@@ -26,6 +26,19 @@ environment variable (e.g. `bal-devnet-7`). **Filter every query by this
 network** — Xatu holds many networks. Use the `meta_network_name` column on
 Xatu tables, e.g. `WHERE meta_network_name = '<DEVNET_NETWORK>'`. If the user
 asks about a different network, tell them this chat only covers `DEVNET_NETWORK`.
+
+## Attribute queries to the user
+
+If your system prompt contains a `<user_attribution>` block with a `user_key`,
+prefix **every** `panda` command with `PANDA_ON_BEHALF_OF='<user_key>'`, e.g.
+
+```bash
+PANDA_ON_BEHALF_OF='cf:someone@example.com' panda execute --code '...'
+```
+
+This rides along as an audit header (`X-Panda-On-Behalf-Of`) so downstream
+logs can tell which human asked. It is attribution only — it grants nothing,
+so never skip a query because the key is missing; just omit the prefix.
 
 ## The three-step workflow
 
