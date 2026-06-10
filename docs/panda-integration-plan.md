@@ -527,15 +527,24 @@ Tunable per-org via `hermes_defaults.resources`.
 
 ## 9. Security model & blast radius
 
-**Privileged container in the org's namespace**. The fat container has
-`privileged: true` (required for dockerd). What this exposes:
+**[Superseded: container split.]** The fat container originally ran
+Hermes + panda-server + dockerd in one privileged container. The
+panda-chat chart now splits the pod: an unprivileged `hermes` container
+(uid 10000, caps dropped, no bot credential, no docker socket) and a
+privileged `panda-server` sidecar (dockerd) that alone holds
+`PANDA_BOT_USERNAME`/`PANDA_BOT_TOKEN` in a dedicated Secret. What the
+privileged sidecar still exposes:
 
-- Anyone with `exec` rights into the pod can break out to the node.
+- Anyone with `exec` rights into the sidecar can break out to the node.
   Mitigation: RBAC restricts pod exec to platform admins.
 - A compromise of the panda-server process (e.g., RCE in a sandbox
   callback handler) gives shell + dockerd, i.e., root on the node.
   Mitigation: panda-server is a thin, well-reviewed Go binary; the
   attack surface is the sandbox-callback HTTP API.
+- Hermes (the LLM-driven shell executor) can no longer read the bot
+  credential or the docker socket; it can still *use* panda-server over
+  127.0.0.1 (confused-deputy — bounded by the bot's external-tier,
+  read-only proxy access).
 
 **NetworkPolicy** (new — add to `charts/org-stack/templates/`):
 - Ingress to the Hermes pod: only from the LibreChat pod in the same
