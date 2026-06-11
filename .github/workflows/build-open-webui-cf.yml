@@ -28,6 +28,7 @@ on:
 
 env:
   IMAGE: ghcr.io/ethpandaops/open-webui-cf
+  DOCKER_IMAGE: docker.io/ethpandaops/chat
   OW_TAG: ${{ github.event.inputs.ow_tag || '0.9.5' }}
 
 jobs:
@@ -47,14 +48,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
       - name: Build + push
         run: |
           TAG="${OW_TAG}-${GITHUB_SHA::7}"
+          DOCKER_TAG="open-webui-cf-${TAG}"
           docker build \
             --build-arg OW_TAG="${OW_TAG}" \
             -t "${IMAGE}:${TAG}" \
             -t "${IMAGE}:${OW_TAG}" \
+            -t "${DOCKER_IMAGE}:${DOCKER_TAG}" \
+            -t "${DOCKER_IMAGE}:open-webui-cf-${OW_TAG}" \
             images/open-webui-cf
           docker push "${IMAGE}:${TAG}"
           docker push "${IMAGE}:${OW_TAG}"
+          docker push "${DOCKER_IMAGE}:${DOCKER_TAG}"
+          docker push "${DOCKER_IMAGE}:open-webui-cf-${OW_TAG}"
           echo "Pushed ${IMAGE}:${OW_TAG} (+ immutable ${TAG})"
+          echo "Pushed ${DOCKER_IMAGE}:${DOCKER_TAG} (+ open-webui-cf-${OW_TAG})"
