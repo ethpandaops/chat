@@ -28,13 +28,13 @@ on:
       panda_version:
         description: 'panda CLI + panda-server release version'
         required: true
-        default: '0.31.0'
+        default: '0.32.0'
 
 env:
   IMAGE: ghcr.io/ethpandaops/hermes-agent-panda
   HERMES_REF: ${{ github.event.inputs.hermes_ref || 'v2026.6.5' }}
   BASE_TAG: ${{ github.event.inputs.base_tag || '2026.6.5' }}
-  PANDA_VERSION: ${{ github.event.inputs.panda_version || '0.31.0' }}
+  PANDA_VERSION: ${{ github.event.inputs.panda_version || '0.32.0' }}
 
 jobs:
   build-and-push:
