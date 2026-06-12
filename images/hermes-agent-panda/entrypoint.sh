@@ -18,6 +18,9 @@ set -euo pipefail
 # Same image for both containers; the chart sets the args per container.
 if [[ "${1:-}" == "panda-stack" ]]; then
   export PANDA_CONFIG=/opt/data/.config/panda/config.yaml
+  # The `direct` sandbox runs executed code with `python3` off PATH; put the
+  # sandbox env (analytics deps + ethpandaops pkg) first so it's the one used.
+  export PATH=/opt/sandbox/bin:$PATH
   exec /usr/local/bin/panda-server serve
 fi
 

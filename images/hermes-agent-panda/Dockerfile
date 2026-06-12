@@ -1,6 +1,6 @@
-# Devnet AI-chat agent: Hermes Agent + panda CLI/server + dockerd + skill pack
-# (panda/faucet/join-devnet/eth-node). Consumed by the panda-chat chart.
-# Published to: ghcr.io/ethpandaops/hermes-agent-panda
+# Devnet AI-chat agent: Hermes Agent + panda CLI/server + sandbox Python env +
+# skill pack (panda/faucet/join-devnet/eth-node). Consumed by the panda-chat chart.
+# Published to: docker.io/ethpandaops/chat (tag hermes-agent-panda-<base>-<sha>)
 #
 # BASE_IMAGE = a vanilla NousResearch Hermes Agent image. There is no published
 # upstream image, so CI builds it from github.com/NousResearch/hermes-agent
@@ -8,50 +8,51 @@
 # overlay FROM it. For a local build, build that base yourself (see README).
 ARG BASE_IMAGE=hermes-agent-base
 ARG BASE_TAG=2026.6.5
+
+# Panda artifacts come from the published panda images — NOT release tarballs —
+# so a branch/PR build of panda (label `build` → `pr-<n>-<sha>` image tags) can
+# be consumed directly without cutting a release. One ref drives all three:
+# CLI `ethpandaops/panda:<ref>`, server `:server-<ref>`, sandbox `:sandbox-<ref>`.
+# For a release, set the version (e.g. `0.33.0`). Needs a panda with BOTH the
+# `client_credentials` auth and the `direct` sandbox backend.
+ARG PANDA_REF=latest
+FROM ethpandaops/panda:${PANDA_REF} AS pandacli
+FROM ethpandaops/panda:server-${PANDA_REF} AS pandaserver
+FROM ethpandaops/panda:sandbox-${PANDA_REF} AS sandbox
+
 FROM ${BASE_IMAGE}:${BASE_TAG}
 
 USER root
 
-# dockerd + client (docker.io ships both on bookworm) + sandbox deps.
+# curl (the chart startupProbe curls :2480/health), yq/jq for the entrypoint +
+# skills, libgomp1 for the sandbox stack's numpy/pandas C-extensions.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      docker.io iptables uidmap \
-      curl yq jq && \
+      curl yq jq libgomp1 && \
     rm -rf /var/lib/apt/lists/*
 
-# TODO(panda release): bump to the first panda release that ships the
-# client_credentials proxy auth mode (branch qu0b/panda-client-credentials,
-# i.e. > v0.31.0). The panda-chat chart >= 0.2.0 renders proxy.auth.mode
-# "client_credentials", which v0.31.0 rejects — do not roll that chart with
-# an image built from this tag.
-ARG PANDA_VERSION=0.31.0
+# panda CLI + server (static CGO-free Go binaries) from the panda images.
+COPY --from=pandacli /usr/local/bin/panda /usr/local/bin/panda
+COPY --from=pandaserver /usr/local/bin/panda-server /usr/local/bin/panda-server
 
-# panda CLI
-RUN curl -fsSL \
-      "https://github.com/ethpandaops/panda/releases/download/v${PANDA_VERSION}/panda_${PANDA_VERSION}_linux_amd64.tar.gz" \
-    | tar -xz -C /usr/local/bin panda \
- && chmod +x /usr/local/bin/panda
-
-# panda-server
-RUN curl -fsSL \
-      "https://github.com/ethpandaops/panda/releases/download/v${PANDA_VERSION}/panda-server_${PANDA_VERSION}_linux_amd64.tar.gz" \
-    | tar -xz -C /usr/local/bin panda-server \
- && chmod +x /usr/local/bin/panda-server
+# Sandbox python prefix → /opt/sandbox. The `direct` backend runs executed code
+# with the panda-server container's own python3, so it MUST carry the analytics
+# stack (pandas/numpy/clickhouse-connect + the `ethpandaops` package). CPython
+# derives sys.prefix from the executable location, so /opt/sandbox/bin/python3
+# resolves its site-packages under /opt/sandbox/lib; the panda-stack entrypoint
+# puts that first on PATH so it's the python the `direct` backend uses.
+COPY --from=sandbox /usr/local /opt/sandbox
 
 # Langfuse SDK for Hermes' observability/langfuse plugin (into the uv venv).
 RUN uv pip install --no-cache-dir --python /opt/hermes/.venv/bin/python langfuse
 
-# Entrypoint shim: starts dockerd + panda-server before Hermes.
+# Dispatch entrypoint: `panda-stack` arg → panda-server; anything else → Hermes.
 COPY entrypoint.sh /opt/panda/entrypoint.sh
 RUN chmod +x /opt/panda/entrypoint.sh
 
 # Devnet skill pack — Hermes loads these when relevant.
 COPY skills/ /opt/hermes/skills/data/
 
-# Override with DOCKERD_STORAGE_DRIVER=vfs if overlayfs is unavailable in-pod.
-ENV DOCKERD_STORAGE_DRIVER=overlay2
-
-# Runs privileged (dockerd needs root).
-USER root
+# Both containers run unprivileged (no dockerd); the chart pins uid 10000.
 ENTRYPOINT ["/opt/panda/entrypoint.sh"]
 CMD ["gateway", "run"]

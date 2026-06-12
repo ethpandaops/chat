@@ -1,20 +1,30 @@
 name: build-hermes-agent-panda
 
-# Builds the hermes-agent-panda image and pushes it to GHCR.
+# Builds the hermes-agent-panda image and pushes it to Docker Hub
+# (docker.io/ethpandaops/chat, tag-prefixed) + GHCR mirror.
 #
 # There is no published upstream Hermes Agent image, so this builds a vanilla
 # base from github.com/NousResearch/hermes-agent (HERMES_REF) into a local
 # `hermes-agent-base:<tag>`, then builds the panda overlay (this repo's
-# Dockerfile) FROM it. No external base registry — zero lab dependency.
+# Dockerfile) FROM it. The overlay pulls panda CLI/server/sandbox from the
+# published panda images by PANDA_REF — so a panda PR build (label `build` →
+# `pr-<n>-<sha>`) can be wired in without cutting a release.
 #
-# Output: ghcr.io/ethpandaops/hermes-agent-panda:<base_tag>-<sha>  (+ :latest)
+# When it builds + pushes (each tags the image by its source):
+#   - push a git tag            → hermes-agent-panda-<tag>      (+ -latest)
+#   - PR labeled `build-docker-image` (same-repo) → hermes-agent-panda-<branch>
+#   - workflow_dispatch         → hermes-agent-panda-<base_tag>-<sha>
+# The upstream Hermes base build is heavy, so this is tag/label/dispatch-driven —
+# a plain push to `main` does NOT auto-build. Apply the `build-docker-image`
+# label (or dispatch) to get an image for a devnet to pull, passing the
+# `panda_ref` for the panda code you want baked in.
 
 on:
   push:
-    branches: [main]
-    paths:
-      - images/hermes-agent-panda/**
-      - .github/workflows/build-hermes-agent-panda.yml
+    tags: ['**']
+  # Runs in base-branch context with secrets so a labeled PR can push images.
+  pull_request_target:
+    types: [labeled]
   workflow_dispatch:
     inputs:
       hermes_ref:
@@ -25,20 +35,32 @@ on:
         description: 'Base/overlay version tag (no "v" prefix)'
         required: true
         default: '2026.6.5'
-      panda_version:
-        description: 'panda CLI + panda-server release version'
+      panda_ref:
+        description: 'panda image ref for CLI/server/sandbox (release version, or pr-<n>-<sha>)'
         required: true
-        default: '0.32.0'
+        default: 'latest'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   IMAGE: ghcr.io/ethpandaops/hermes-agent-panda
   DOCKER_IMAGE: docker.io/ethpandaops/chat
   HERMES_REF: ${{ github.event.inputs.hermes_ref || 'v2026.6.5' }}
   BASE_TAG: ${{ github.event.inputs.base_tag || '2026.6.5' }}
-  PANDA_VERSION: ${{ github.event.inputs.panda_version || '0.32.0' }}
+  PANDA_REF: ${{ github.event.inputs.panda_ref || 'latest' }}
 
 jobs:
   build-and-push:
+    # Gate: push / dispatch always; PRs only when labeled `build-docker-image`
+    # and from this repo (a fork PR head must not push with our secrets).
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' &&
+       contains(github.event.pull_request.labels.*.name, 'build-docker-image') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,6 +68,31 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # pull_request_target defaults to the base ref — check out the PR head.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Resolve image tag
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request_target" ]]; then
+            src="${GITHUB_HEAD_REF}"            # branch name
+            latest=false
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            src="${GITHUB_REF#refs/tags/}"      # git tag
+            latest=true
+          else
+            src="${BASE_TAG}-${GITHUB_SHA::7}"  # main push / dispatch
+            latest=true
+          fi
+          suffix="$(printf '%s' "$src" | sed 's#[/ ]#-#g')"
+          {
+            echo "suffix=${suffix}"
+            echo "tag=hermes-agent-panda-${suffix}"
+            echo "latest=${latest}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -70,20 +117,23 @@ jobs:
 
       - name: Build + push panda overlay
         run: |
-          TAG="${BASE_TAG}-${GITHUB_SHA::7}"
-          DOCKER_TAG="hermes-agent-panda-${TAG}"
+          set -euo pipefail
+          SUFFIX="${{ steps.meta.outputs.suffix }}"
+          DOCKER_TAG="${{ steps.meta.outputs.tag }}"
+          TAGS=( -t "${DOCKER_IMAGE}:${DOCKER_TAG}" -t "${IMAGE}:${SUFFIX}" )
+          if [[ "${{ steps.meta.outputs.latest }}" == "true" ]]; then
+            TAGS+=( -t "${DOCKER_IMAGE}:hermes-agent-panda-latest" -t "${IMAGE}:latest" )
+          fi
           docker build \
             --build-arg BASE_IMAGE=hermes-agent-base \
             --build-arg BASE_TAG="${BASE_TAG}" \
-            --build-arg PANDA_VERSION="${PANDA_VERSION}" \
-            -t "${IMAGE}:${TAG}" \
-            -t "${IMAGE}:latest" \
-            -t "${DOCKER_IMAGE}:${DOCKER_TAG}" \
-            -t "${DOCKER_IMAGE}:hermes-agent-panda-latest" \
+            --build-arg PANDA_REF="${PANDA_REF}" \
+            "${TAGS[@]}" \
             images/hermes-agent-panda
-          docker push "${IMAGE}:${TAG}"
-          docker push "${IMAGE}:latest"
           docker push "${DOCKER_IMAGE}:${DOCKER_TAG}"
-          docker push "${DOCKER_IMAGE}:hermes-agent-panda-latest"
-          echo "Pushed ${IMAGE}:${TAG} (+ :latest)"
-          echo "Pushed ${DOCKER_IMAGE}:${DOCKER_TAG} (+ hermes-agent-panda-latest)"
+          docker push "${IMAGE}:${SUFFIX}"
+          if [[ "${{ steps.meta.outputs.latest }}" == "true" ]]; then
+            docker push "${DOCKER_IMAGE}:hermes-agent-panda-latest"
+            docker push "${IMAGE}:latest"
+          fi
+          echo "Pushed ${DOCKER_IMAGE}:${DOCKER_TAG}"
