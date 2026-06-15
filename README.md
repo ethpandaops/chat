@@ -8,7 +8,7 @@ pushed to GHCR as a private mirror we don't rely on.
 
 | Image | Path | Pulled from (Docker Hub tags) | What it is |
 |-------|------|--------------|------------|
-| **hermes-agent-panda** | [`images/hermes-agent-panda/`](images/hermes-agent-panda/) | `ethpandaops/chat:hermes-agent-panda-<base>-<sha>` (+ `…-latest`) | NousResearch Hermes Agent + `panda` CLI/server + dockerd + the devnet skill pack (panda/faucet/join-devnet/eth-node). |
+| **hermes-agent-panda** | [`images/hermes-agent-panda/`](images/hermes-agent-panda/) | `ethpandaops/chat:hermes-agent-panda-<base>-<sha>` (+ `…-latest`) | NousResearch Hermes Agent + `panda` CLI/server + dockerd + the devnet skill pack (panda/faucet/join-devnet). |
 | **open-webui-cf** | [`images/open-webui-cf/`](images/open-webui-cf/) | `ethpandaops/chat:open-webui-cf-<ow_tag>-<sha>` (+ `…-<ow_tag>`) | Open-WebUI patched to forward the `Cf-Access-Jwt-Assertion` header to the upstream model endpoint, so Hermes sees the individual Cloudflare-Access user (per-user auth + Langfuse attribution). |
 
 Each image builds and pushes via its own workflow under

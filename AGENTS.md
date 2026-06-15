@@ -25,7 +25,7 @@ platform/GitOps/Terraform/tenant code here.
 - `images/hermes-agent-panda/` — `Dockerfile` (panda overlay), `entrypoint.sh`
   (**dispatch** by first arg: `panda-stack` → dockerd + panda-server in the
   privileged sidecar; anything else → Hermes `gateway run` in the unprivileged
-  container), `skills/{panda,faucet,join-devnet,eth-node}/SKILL.md` (the product
+  container), `skills/{panda,faucet,join-devnet}/SKILL.md` (the product
   surface; scoped by `$DEVNET_*`), README, `.env.example`.
 - `images/open-webui-cf/` — `Dockerfile` (`FROM` upstream OW + `patch.py`), `patch.py`
   (build-time patch of `get_headers_and_cookies()`; asserts uniqueness so a broken OW

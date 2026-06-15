@@ -1,7 +1,7 @@
 ---
 name: panda
 description: "Query Ethereum devnet analytics (Xatu ClickHouse chain events, container logs in ClickHouse otel_logs, Prometheus, beacon/exec nodes) by running Python in a sandboxed environment via the panda CLI. Scoped to this devnet."
-version: 0.3.1
+version: 0.4.0
 platforms: [linux]
 metadata:
   hermes:
@@ -83,6 +83,29 @@ cluster is experimental and not always populated. So:
 
 Bind values with `params` (`{name:Type}`). Discover tables/columns with
 `panda schema` or `clickhouse://tables/{table}` — never invent names.
+
+## Live node queries — the `ethnode` module
+
+For **real-time** chain state (current block/slot, sync, finality, peers, config
+spec, fork schedule) query the devnet's EL/CL nodes directly — no ClickHouse, no
+log lag:
+
+```python
+from ethpandaops import ethnode
+net  = "bal-devnet-7"        # the devnet name from your system prompt
+inst = "lighthouse-geth-1"   # a <cl>-<el>-<n> node instance (see below)
+ethnode.eth_block_number(net, inst)                      # EL head block
+ethnode.get_beacon_headers(net, inst)                    # CL head header
+ethnode.get_finality_checkpoints(net, inst)              # justified/finalized
+ethnode.get_peer_count(net, inst)                        # CL peers
+ethnode.execution_rpc(net, inst, "eth_syncing")          # any EL JSON-RPC
+ethnode.beacon_get(net, inst, "/eth/v1/node/syncing")    # any beacon REST path
+```
+
+Discover reachable networks with `ethnode.list_networks()`. Instances are named
+`<cl>-<el>-<n>` (e.g. `lighthouse-geth-1`, `lodestar-geth-1`, `lighthouse-reth-1`);
+a **502** means that client pairing isn't in this devnet — try another. Use
+`ethnode` for "right now" questions and ClickHouse for history/aggregates.
 
 ## The three-step workflow
 

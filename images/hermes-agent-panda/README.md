@@ -4,12 +4,12 @@ The EthPandaOps devnet AI-chat **agent image**: NousResearch Hermes Agent + the
 `panda` CLI + `panda-server` + the sandbox Python env (for panda's `direct`
 execution backend), with the devnet **skill pack** baked in:
 
-- `skills/panda/` — query devnet analytics (Xatu/Prometheus/Loki/Dora/Ethnode),
-  scoped to `$DEVNET_NETWORK`.
+- `skills/panda/` — query devnet analytics (Xatu ClickHouse chain events,
+  container logs in ClickHouse `otel_logs`, Prometheus, Dora) and live EL/CL
+  nodes via the `ethnode` module, scoped to `$DEVNET_NETWORK`.
 - `skills/faucet/` — fund accounts via the devnet powfaucet (`$DEVNET_FAUCET_URL`).
 - `skills/join-devnet/` — enodes/bootnodes/genesis/config (`$DEVNET_CONFIG_URL`)
   and a ready-to-run client command.
-- `skills/eth-node/` — inspect the user's own node against the devnet.
 
 It also bundles the `langfuse` SDK so Hermes' `observability/langfuse` plugin can
 trace turns/LLM calls/tools when enabled (env `HERMES_LANGFUSE_PUBLIC_KEY`,
