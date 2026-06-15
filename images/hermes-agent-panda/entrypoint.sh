@@ -38,6 +38,21 @@ cd /opt/data
 # shellcheck disable=SC1091
 . /opt/hermes/.venv/bin/activate
 
+# Tool-call visibility: Hermes runs its agent loop server-side and streams tool
+# progress on a custom `event: hermes.tool.progress` SSE channel that Open-WebUI
+# discards (it only reads `data:` chat chunks). Front Hermes with the toolstream
+# proxy, which rewrites those events into standard `delta.tool_calls` chunks OW
+# renders natively. The proxy takes the public port; Hermes moves to an internal
+# one. Disable with HERMES_TOOLSTREAM_PROXY=0 (Hermes then binds the port direct).
+if [[ "${HERMES_TOOLSTREAM_PROXY:-1}" == "1" ]]; then
+  public_port="${API_SERVER_PORT:-8642}"
+  internal_port="$((public_port + 1))"
+  export API_SERVER_PORT="$internal_port"
+  export TOOLSTREAM_LISTEN=":${public_port}"
+  export TOOLSTREAM_UPSTREAM="http://127.0.0.1:${internal_port}"
+  /usr/local/bin/hermes-toolstream-proxy &
+fi
+
 if [[ $# -eq 0 ]]; then
   exec hermes
 fi

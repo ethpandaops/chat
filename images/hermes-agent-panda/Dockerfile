@@ -20,6 +20,13 @@ FROM ethpandaops/panda:${PANDA_REF} AS pandacli
 FROM ethpandaops/panda:server-${PANDA_REF} AS pandaserver
 FROM ethpandaops/panda:sandbox-${PANDA_REF} AS sandbox
 
+# Toolstream proxy: rewrites Hermes' custom tool-progress SSE events into
+# standard OpenAI delta.tool_calls so Open-WebUI renders tool activity natively.
+FROM golang:1.23-alpine AS toolproxy
+WORKDIR /src
+COPY toolstream-proxy/ .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /hermes-toolstream-proxy .
+
 FROM ${BASE_IMAGE}:${BASE_TAG}
 
 USER root
@@ -34,6 +41,7 @@ RUN apt-get update && \
 # panda CLI + server (static CGO-free Go binaries) from the panda images.
 COPY --from=pandacli /usr/local/bin/panda /usr/local/bin/panda
 COPY --from=pandaserver /usr/local/bin/panda-server /usr/local/bin/panda-server
+COPY --from=toolproxy /hermes-toolstream-proxy /usr/local/bin/hermes-toolstream-proxy
 
 # Sandbox python prefix → /opt/sandbox. The `direct` backend runs executed code
 # with the panda-server container's own python3, so it MUST carry the analytics
