@@ -1,6 +1,6 @@
 ---
 name: panda
-description: "Query this Ethereum devnet's analytics — validators, finality, block/blob production, MEV, metrics, client logs — by running sandboxed Python via the panda CLI (Xatu ClickHouse, Prometheus, Dora, EL/CL nodes). Scoped to this devnet."
+description: "Query this devnet's chain data, metrics, and logs — validators, finality, blocks, blobs, MEV — by running sandboxed Python via the panda CLI. Scoped to this devnet."
 version: 0.5.0
 platforms: [linux]
 metadata:

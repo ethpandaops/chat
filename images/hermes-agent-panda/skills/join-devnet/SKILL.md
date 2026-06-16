@@ -1,7 +1,7 @@
 ---
 name: join-devnet
-description: "Help a user join this Ethereum devnet: hand them enodes/bootnodes, genesis + chain config, and a ready-to-run client command."
-version: 0.1.0
+description: "Join this devnet: enodes/bootnodes, genesis + chain config, and a ready-to-run client command."
+version: 0.1.1
 platforms: [linux]
 metadata:
   hermes:

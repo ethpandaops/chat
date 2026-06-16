@@ -1,7 +1,7 @@
 ---
 name: faucet
-description: "Fund an account on this Ethereum devnet using the devnet's PoW faucet (powfaucet)."
-version: 0.1.0
+description: "Fund an account on this devnet via its PoW faucet (powfaucet)."
+version: 0.1.1
 platforms: [linux]
 metadata:
   hermes:
