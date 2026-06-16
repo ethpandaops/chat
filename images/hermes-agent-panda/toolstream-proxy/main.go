@@ -97,6 +97,7 @@ type toolProgress struct {
 	Label      string `json:"label"`
 	ToolCallID string `json:"toolCallId"`
 	Status     string `json:"status"`
+	Result     string `json:"result"` // present on completed (Hermes patch); the tool output
 }
 
 // translateSSE streams `body` to `w`, passing real completion chunks through
@@ -206,12 +207,12 @@ func toolCardChunk(meta chunkMeta, ev toolProgress) map[string]any {
 		argKey = "skill"
 	}
 	args, _ := json.Marshal(map[string]string{argKey: ev.Label})
-	// Hermes streams no per-tool output on this endpoint; the command lives in
-	// `arguments`, the actual result in the final answer prose. Leave the result
-	// body empty rather than echoing the command as if it were output.
+	// OW renders the body (a JSON-encoded string) as the tool OUTPUT. The result
+	// rides on the completed event via the Hermes patch; empty if absent.
+	result, _ := json.Marshal(ev.Result)
 	card := fmt.Sprintf(
-		"\n<details type=\"tool_calls\" done=\"true\" id=%q name=%q arguments=%q>\n<summary>Tool Executed</summary>\n\"\"\n</details>\n",
-		ev.ToolCallID, ev.Tool, html.EscapeString(string(args)),
+		"\n<details type=\"tool_calls\" done=\"true\" id=%q name=%q arguments=%q>\n<summary>Tool Executed</summary>\n%s\n</details>\n",
+		ev.ToolCallID, ev.Tool, html.EscapeString(string(args)), html.EscapeString(string(result)),
 	)
 	return map[string]any{
 		"id":      meta.ID,

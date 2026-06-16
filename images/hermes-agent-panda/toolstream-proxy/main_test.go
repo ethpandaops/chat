@@ -14,7 +14,7 @@ event: hermes.tool.progress
 data: {"tool":"terminal","emoji":"x","label":"panda execute --code 'print(1)'","toolCallId":"toolu_02","status":"running"}
 
 event: hermes.tool.progress
-data: {"tool":"terminal","toolCallId":"toolu_02","status":"completed"}
+data: {"tool":"terminal","toolCallId":"toolu_02","status":"completed","result":"the answer is 4"}
 
 data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","created":1781536710,"model":"hermes-agent","choices":[{"index":0,"delta":{"content":"done"},"finish_reason":null}]}
 
@@ -64,7 +64,7 @@ func TestTranslateSSE(t *testing.T) {
 			t.Errorf("card not attributed to source chunk: id=%q model=%q", chunk.ID, chunk.Model)
 		}
 		c := chunk.Choices[0].Delta.Content
-		for _, want := range []string{`type="tool_calls"`, `done="true"`, `name="terminal"`, "Tool Executed", "panda execute"} {
+		for _, want := range []string{`type="tool_calls"`, `done="true"`, `name="terminal"`, "Tool Executed", "panda execute", "the answer is 4"} {
 			if !strings.Contains(c, want) {
 				t.Errorf("card missing %q: %s", want, c)
 			}

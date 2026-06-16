@@ -54,6 +54,11 @@ COPY --from=sandbox /usr/local /opt/sandbox
 # Langfuse SDK for Hermes' observability/langfuse plugin (into the uv venv).
 RUN uv pip install --no-cache-dir --python /opt/hermes/.venv/bin/python langfuse
 
+# Patch Hermes' chat-completions SSE to carry the tool result (it's in scope but
+# dropped upstream); the toolstream proxy maps it to each card's OUTPUT in OW.
+COPY patch-hermes-toolresult.py /tmp/patch-hermes-toolresult.py
+RUN /opt/hermes/.venv/bin/python /tmp/patch-hermes-toolresult.py && rm /tmp/patch-hermes-toolresult.py
+
 # Dispatch entrypoint: `panda-stack` arg → panda-server; anything else → Hermes.
 COPY entrypoint.sh /opt/panda/entrypoint.sh
 RUN chmod +x /opt/panda/entrypoint.sh
