@@ -39,42 +39,38 @@ func TestTranslateSSE(t *testing.T) {
 		}
 	}
 
-	// Exactly one synthesized tool_call (running only — completed is dropped),
-	// in standard OpenAI shape, attributed to the real chunk id/model.
-	var calls int
+	// We must NOT emit delta.tool_calls — OW would try to execute them.
+	if strings.Contains(got, "tool_calls\":[{") || strings.Contains(got, `"function"`) {
+		t.Fatalf("must not emit delta.tool_calls:\n%s", got)
+	}
+
+	// Exactly one tool card, emitted on completion as a content-embedded
+	// done="true" <details> block carrying the command from the running event.
+	var cards int
 	for _, line := range strings.Split(got, "\n") {
 		data, ok := strings.CutPrefix(line, "data: ")
-		if !ok || !strings.Contains(data, "tool_calls") {
+		if !ok || !strings.Contains(data, "details type=") {
 			continue
 		}
-		calls++
+		cards++
 		var chunk struct {
 			ID, Model string
-			Choices   []struct {
-				Delta struct {
-					ToolCalls []struct {
-						Index    int
-						ID, Type string
-						Function struct{ Name, Arguments string }
-					} `json:"tool_calls"`
-				}
-			}
+			Choices   []struct{ Delta struct{ Content string } }
 		}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			t.Fatalf("synthesized chunk is not valid JSON: %v\n%s", err, data)
+			t.Fatalf("card chunk is not valid JSON: %v\n%s", err, data)
 		}
-		tc := chunk.Choices[0].Delta.ToolCalls[0]
 		if chunk.ID != "chatcmpl-abc" || chunk.Model != "hermes-agent" {
-			t.Errorf("tool_call not attributed to source chunk: id=%q model=%q", chunk.ID, chunk.Model)
+			t.Errorf("card not attributed to source chunk: id=%q model=%q", chunk.ID, chunk.Model)
 		}
-		if tc.Type != "function" || tc.Function.Name != "terminal" || tc.ID != "toolu_02" || tc.Index != 0 {
-			t.Errorf("unexpected tool_call: %+v", tc)
-		}
-		if !strings.Contains(tc.Function.Arguments, "panda execute") {
-			t.Errorf("command not carried into arguments: %q", tc.Function.Arguments)
+		c := chunk.Choices[0].Delta.Content
+		for _, want := range []string{`type="tool_calls"`, `done="true"`, `name="terminal"`, "Tool Executed", "panda execute"} {
+			if !strings.Contains(c, want) {
+				t.Errorf("card missing %q: %s", want, c)
+			}
 		}
 	}
-	if calls != 1 {
-		t.Fatalf("expected 1 synthesized tool_call (completed dropped), got %d", calls)
+	if cards != 1 {
+		t.Fatalf("expected 1 tool card (on completion), got %d", cards)
 	}
 }

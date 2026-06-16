@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -99,11 +100,19 @@ type toolProgress struct {
 }
 
 // translateSSE streams `body` to `w`, passing real completion chunks through
-// unchanged and converting `hermes.tool.progress` (status=running) events into
-// standard `delta.tool_calls` chunks. The synthesized chunks reuse the id/model
-// seen on real chunks so OW attributes them to the same message; the final
-// finish_reason stays "stop" (the proxy never injects "tool_calls"), so OW
-// renders the calls instead of trying to execute them.
+// unchanged and turning `hermes.tool.progress` events into content-embedded
+// `<details type="tool_calls">` blocks — the exact markup Open-WebUI renders as
+// native, collapsible tool-call cards.
+//
+// We deliberately do NOT emit `delta.tool_calls`: OW treats those as tools IT
+// must execute and enters a tool-call retry loop, leaving the cards stuck on
+// "Executing..." (the names aren't OW tools) and starving the final answer.
+// Emitting the rendered `<details>` as plain `delta.content` (done="true")
+// sidesteps that machinery entirely. Hermes never streams per-tool output on
+// this endpoint, so the block carries only the command; the result lives in the
+// final answer prose, which now flows through untouched. The card is emitted on
+// the `completed` event (command captured from the matching `running`); any tool
+// still pending at end-of-stream is flushed so it isn't lost.
 func translateSSE(w io.Writer, body io.Reader) {
 	flusher, _ := w.(http.Flusher)
 	sc := bufio.NewScanner(body)
@@ -112,8 +121,12 @@ func translateSSE(w io.Writer, body io.Reader) {
 	var eventName string
 	var dataLines []string
 	var meta chunkMeta
-	toolIdx := -1
-	seen := map[string]int{}
+	running := map[string]toolProgress{}
+
+	emitCard := func(ev toolProgress) {
+		b, _ := json.Marshal(toolCardChunk(meta, ev))
+		writeData(w, flusher, string(b))
+	}
 
 	flush := func() {
 		event, data := eventName, strings.Join(dataLines, "\n")
@@ -138,17 +151,19 @@ func translateSSE(w io.Writer, body io.Reader) {
 			writeData(w, flusher, data)
 		case "hermes.tool.progress":
 			var ev toolProgress
-			if json.Unmarshal([]byte(data), &ev) != nil || ev.Status != "running" {
-				return // only the call itself is surfaced; "completed" adds noise
+			if json.Unmarshal([]byte(data), &ev) != nil {
+				return
 			}
-			idx, ok := seen[ev.ToolCallID]
-			if !ok {
-				toolIdx++
-				idx = toolIdx
-				seen[ev.ToolCallID] = idx
+			switch ev.Status {
+			case "running":
+				running[ev.ToolCallID] = ev // hold the command until completion
+			case "completed":
+				if started, ok := running[ev.ToolCallID]; ok {
+					ev.Label = started.Label
+					delete(running, ev.ToolCallID)
+				}
+				emitCard(ev)
 			}
-			b, _ := json.Marshal(toolCallChunk(meta, idx, ev))
-			writeData(w, flusher, string(b))
 		default:
 			// unknown custom event — OW can't use it, drop it.
 		}
@@ -170,35 +185,42 @@ func translateSSE(w io.Writer, body io.Reader) {
 	if len(dataLines) > 0 {
 		flush()
 	}
+	for _, ev := range running { // tools still pending at stream end
+		emitCard(ev)
+	}
 }
 
-func toolCallChunk(meta chunkMeta, idx int, ev toolProgress) map[string]any {
+// toolCardChunk wraps a rendered `<details type="tool_calls">` card as a normal
+// content delta so OW accumulates it into the assistant message and renders it
+// as a completed tool-call card (done="true" → no spinner).
+func toolCardChunk(meta chunkMeta, ev toolProgress) map[string]any {
 	created := meta.Created
 	if created == 0 {
 		created = time.Now().Unix()
 	}
-	var args []byte
+	argKey := "label"
 	switch ev.Tool {
 	case "terminal":
-		args, _ = json.Marshal(map[string]string{"command": ev.Label})
+		argKey = "command"
 	case "skill_view":
-		args, _ = json.Marshal(map[string]string{"skill": ev.Label})
-	default:
-		args, _ = json.Marshal(map[string]string{"label": ev.Label})
+		argKey = "skill"
 	}
+	args, _ := json.Marshal(map[string]string{argKey: ev.Label})
+	// Hermes streams no per-tool output on this endpoint; the command lives in
+	// `arguments`, the actual result in the final answer prose. Leave the result
+	// body empty rather than echoing the command as if it were output.
+	card := fmt.Sprintf(
+		"\n<details type=\"tool_calls\" done=\"true\" id=%q name=%q arguments=%q>\n<summary>Tool Executed</summary>\n\"\"\n</details>\n",
+		ev.ToolCallID, ev.Tool, html.EscapeString(string(args)),
+	)
 	return map[string]any{
 		"id":      meta.ID,
 		"object":  "chat.completion.chunk",
 		"created": created,
 		"model":   meta.Model,
 		"choices": []any{map[string]any{
-			"index": 0,
-			"delta": map[string]any{"tool_calls": []any{map[string]any{
-				"index":    idx,
-				"id":       ev.ToolCallID,
-				"type":     "function",
-				"function": map[string]any{"name": ev.Tool, "arguments": string(args)},
-			}}},
+			"index":         0,
+			"delta":         map[string]any{"content": card},
 			"finish_reason": nil,
 		}},
 	}
