@@ -1,7 +1,7 @@
 ---
 name: panda
-description: "Query this devnet's chain data, metrics, and logs — validators, finality, blocks, blobs, MEV — by running sandboxed Python via the panda CLI. Scoped to this devnet."
-version: 0.5.0
+description: "Query and debug this devnet's chain data, metrics, logs, and live nodes — validators, finality, blocks, blobs, MEV, ePBS/PeerDAS — via the panda CLI. Scoped to this devnet."
+version: 0.6.0
 platforms: [linux]
 metadata:
   hermes:
@@ -78,6 +78,61 @@ Which source holds a given devnet varies and is in flux — confirm with
   datasource.** See `panda search runbooks "debug devnet"` for the schema.
 - **Network status / explorer** — the `dora` module (`get_network_overview`,
   `get_validator`, `link_*`).
+
+## Debugging this devnet
+
+For any "why is X broken / slow / missing / split" question, panda ships the
+canonical, **fork-aware** procedure — read and follow it rather than improvising:
+
+```bash
+panda read runbooks://debug_devnet
+```
+
+The shape of it:
+
+1. **Read the network first** — `panda resources read networks://<network>` for
+   chain id, genesis, fork schedule, service URLs, and the node-inventory URL. A
+   symptom only means something under the network's *active* fork rules.
+2. **Stay fork-aware** — don't assume the pre-ePBS model. Under Gloas/ePBS a slot
+   splits into separate beacon-block, payload-reveal, and PTC verdicts; under
+   Fulu/PeerDAS availability is per data-column. A "missing payload" or "missing
+   column" can be a normal protocol artifact — classify before you drill.
+3. **Baseline → classify → drill** into nodes, logs, and RPC.
+
+Pick the source that actually answers the question; treat disagreement between
+them as evidence, not noise:
+
+| Source | Answers | Reach it with |
+| --- | --- | --- |
+| `networks://<network>` | metadata, fork schedule, node inventory | `panda resources read` |
+| Dora | indexed chain: epochs, slots, missed proposers, offline attesters | `panda dora …` |
+| Forky | fork-choice / head comparison across nodes | `panda` forky module |
+| ethnode | one node's live truth: head, finality, peers, syncing | `panda ethnode …` |
+| `external.otel_logs` | container/runtime behaviour + historical logs | `panda clickhouse …` |
+
+Two drill-downs you'll reach for constantly (substitute the network name from your
+system prompt; confirm instance names with `panda ethnode networks`):
+
+```bash
+# Recent error+ logs for this devnet. Filter on SeverityNumber (>=17 = ERROR);
+# SeverityText casing is inconsistent (error/Error/ERROR), so don't match on it.
+panda clickhouse query clickhouse-raw "
+  SELECT Timestamp, ServiceName, SeverityText, Body
+  FROM external.otel_logs
+  WHERE ResourceAttributes['network'] = '<network>'
+    AND Timestamp > now() - INTERVAL 1 HOUR
+    AND SeverityNumber >= 17
+  ORDER BY Timestamp DESC LIMIT 100"
+
+# One node's live consensus view (instance e.g. lighthouse-geth-1, or 'lb')
+panda ethnode finality <network> <instance>
+panda ethnode syncing  <network> <instance>
+panda ethnode peers    <network> <instance>
+```
+
+Keep a running report at `/workspace/<network>-debug-<ts>.md`, paste raw output
+(never paraphrase counts, roots, or log lines), and cite the `panda` command that
+re-derives each finding — `runbooks://debug_devnet` includes a report helper.
 
 ## Attribute queries to the user
 
