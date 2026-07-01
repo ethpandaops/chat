@@ -23,9 +23,10 @@ platform/GitOps/Terraform/tenant code here.
 ## Layout
 
 - `images/hermes-agent-panda/` — `Dockerfile` (panda overlay), `entrypoint.sh`
-  (**dispatch** by first arg: `panda-stack` → `panda-server` with the `direct`
-  sandbox in the unprivileged sidecar; anything else → Hermes `gateway run`,
-  fronted by the toolstream proxy, in the unprivileged main container),
+  (**dispatch** by first arg: `panda-stack` → `dockerd` + `panda-server` with
+  panda's `docker` sandbox backend in the privileged sidecar; anything else →
+  Hermes `gateway run`, fronted by the toolstream proxy, in the unprivileged
+  main container),
   `toolstream-proxy/` (tiny Go reverse proxy that rewrites Hermes' custom
   tool-progress SSE events into standard OpenAI `delta.tool_calls` so Open-WebUI
   renders them), `skills/{panda,faucet,join-devnet}/SKILL.md` (the product

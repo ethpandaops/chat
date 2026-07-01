@@ -1,8 +1,8 @@
 # ethpandaops/chat — hermes-agent-panda
 
 The EthPandaOps devnet AI-chat **agent image**: NousResearch Hermes Agent + the
-`panda` CLI + `panda-server` + the sandbox Python env (for panda's `direct`
-execution backend), with the devnet **skill pack** baked in:
+`panda` CLI + `panda-server` + `dockerd` (for panda's `docker` sandbox
+backend), with the devnet **skill pack** baked in:
 
 - `skills/panda/` — query devnet analytics (Xatu ClickHouse chain events,
   container logs in ClickHouse `otel_logs`, Prometheus, Dora) and live EL/CL
@@ -36,13 +36,17 @@ dispatched by the entrypoint's first arg:
   `DEVNET_EXPLORER_URL`, `PANDA_SERVER_URL`, plus the model key
   (`$ANTHROPIC_API_KEY` or whatever `llm.apiKeyEnv` names). It must NOT
   receive the bot credential — Hermes executes LLM-driven shell commands.
-- `panda-server` container — entrypoint arg `panda-stack`: execs panda-server in
-  the foreground with the `direct` sandbox backend (executed Python runs as a
-  subprocess using the bundled `/opt/sandbox` env; no dockerd, no sandbox image).
-  **Unprivileged** (uid 10000, caps dropped) and the only container with
-  `PANDA_BOT_USERNAME` / `PANDA_BOT_TOKEN` (the Authentik service-account
+- `panda-server` container — entrypoint arg `panda-stack`: starts an in-pod
+  `dockerd`, pulls the sandbox image, then execs panda-server in the foreground
+  with the `docker` sandbox backend (each `panda execute` runs in its own
+  sandbox container). **Privileged** (dockerd needs root) and the only container
+  with `PANDA_BOT_USERNAME` / `PANDA_BOT_TOKEN` (the Authentik service-account
   identity panda-server mints client_credentials proxy tokens with — no
-  credential files on the PVC, and never exposed to the executed code).
+  credential files on the PVC, and never exposed to the executed code). dockerd
+  uses `overlay2` reliably because the chart mounts `/var/lib/docker` on a
+  node-local emptyDir (real ext4/xfs) — the kernel forbids stacking overlay2 on
+  the pod's overlay rootfs. `DOCKERD_STORAGE_DRIVER=vfs` is a fallback only for
+  exotic nodes whose kubelet dir is itself overlayfs/NFS.
 
 Both mount the `/opt/data` PVC with `.config/panda/config.yaml` (seeded by
 the chart's `seed-config` initContainer); they share the pod network
@@ -61,12 +65,14 @@ git clone --depth 1 --branch v2026.6.5 \
 docker build -t hermes-agent-base:2026.6.5 ./hermes-agent
 
 # 2. panda overlay (this repo). PANDA_REF selects the panda images for the CLI
-#    (`:<ref>`), server (`:server-<ref>`) and sandbox env (`:sandbox-<ref>`) —
-#    a release version (e.g. `0.33.0`) or a panda PR build (`pr-<n>-<sha>`).
+#    (`:<ref>`) and server (`:server-<ref>`) — a release version (e.g. `0.37.0`)
+#    or a panda PR build (`pr-<n>-<sha>`). The sandbox image (`:sandbox-<ref>`)
+#    is NOT baked in; dockerd pulls it at runtime, so keep the chart's
+#    `panda.sandboxImage` on the same ref.
 docker build \
   --build-arg BASE_IMAGE=hermes-agent-base \
   --build-arg BASE_TAG=2026.6.5 \
-  --build-arg PANDA_REF=latest \
+  --build-arg PANDA_REF=0.37.0 \
   -t ethpandaops/chat:hermes-agent-panda-2026.6.5 \
   images/hermes-agent-panda
 ```
