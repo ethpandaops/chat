@@ -59,6 +59,16 @@ cd /opt/data
 # shellcheck disable=SC1091
 . /opt/hermes/.venv/bin/activate
 
+# Devnet context briefing: one-shot preload of /opt/data/devnet-context.md
+# (identity, forks, tool URLs, node inventory) so the agent starts oriented.
+# Static facts land immediately; the script waits (bounded) for the panda
+# sidecar, adds the node inventory, and exits. The agent re-runs it with
+# --refresh when it wants a current briefing — no daemon. Skipped without a
+# devnet or via DEVNET_CONTEXT_PRELOAD=0.
+if [[ -n "${DEVNET_NETWORK:-}" && "${DEVNET_CONTEXT_PRELOAD:-1}" == "1" ]]; then
+  /opt/panda/devnet-context.sh &
+fi
+
 # Tool-call visibility: Hermes runs its agent loop server-side and streams tool
 # progress on a custom `event: hermes.tool.progress` SSE channel that Open-WebUI
 # discards (it only reads `data:` chat chunks). Front Hermes with the toolstream

@@ -47,8 +47,12 @@ COPY --from=pandacli /usr/local/bin/panda /usr/local/bin/panda
 COPY --from=pandaserver /usr/local/bin/panda-server /usr/local/bin/panda-server
 COPY --from=toolproxy /hermes-toolstream-proxy /usr/local/bin/hermes-toolstream-proxy
 
-# Langfuse SDK for Hermes' observability/langfuse plugin (into the uv venv).
-RUN uv pip install --no-cache-dir --python /opt/hermes/.venv/bin/python langfuse
+# Into the uv venv: langfuse SDK (observability/langfuse plugin) + the Telegram
+# SDK so the telegram gateway works without a runtime pip-install (the pod's
+# /opt/hermes is not writable by uid 10000). Telegram is enabled at runtime by
+# TELEGRAM_BOT_TOKEN; the SDK just needs to be present.
+RUN uv pip install --no-cache-dir --python /opt/hermes/.venv/bin/python \
+      langfuse python-telegram-bot
 
 # Patch Hermes' chat-completions SSE to carry the tool result (it's in scope but
 # dropped upstream); the toolstream proxy maps it to each card's OUTPUT in OW.
@@ -56,8 +60,10 @@ COPY patch-hermes-toolresult.py /tmp/patch-hermes-toolresult.py
 RUN /opt/hermes/.venv/bin/python /tmp/patch-hermes-toolresult.py && rm /tmp/patch-hermes-toolresult.py
 
 # Dispatch entrypoint: `panda-stack` arg → panda-server; anything else → Hermes.
+# devnet-context.sh preloads a devnet briefing for the agent (hermes path).
 COPY entrypoint.sh /opt/panda/entrypoint.sh
-RUN chmod +x /opt/panda/entrypoint.sh
+COPY devnet-context.sh /opt/panda/devnet-context.sh
+RUN chmod +x /opt/panda/entrypoint.sh /opt/panda/devnet-context.sh
 
 # Devnet skill pack — Hermes loads these when relevant.
 COPY skills/ /opt/hermes/skills/data/
