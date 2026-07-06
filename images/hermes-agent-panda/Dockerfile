@@ -7,7 +7,7 @@
 # (tag = BASE_TAG) into a local `hermes-agent-base:<tag>` first, then builds this
 # overlay FROM it. For a local build, build that base yourself (see README).
 ARG BASE_IMAGE=hermes-agent-base
-ARG BASE_TAG=2026.6.5
+ARG BASE_TAG=2026.7.1
 
 # Panda CLI + server come from the published panda images — NOT release tarballs
 # — so a branch/PR build of panda (label `build` → `pr-<n>-<sha>` image tags) can

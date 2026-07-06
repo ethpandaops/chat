@@ -60,9 +60,9 @@ then build this overlay `FROM` it.
 
 ```bash
 # 1. vanilla Hermes base from upstream source
-git clone --depth 1 --branch v2026.6.5 \
+git clone --depth 1 --branch v2026.7.1 \
   https://github.com/NousResearch/hermes-agent.git hermes-agent
-docker build -t hermes-agent-base:2026.6.5 ./hermes-agent
+docker build -t hermes-agent-base:2026.7.1 ./hermes-agent
 
 # 2. panda overlay (this repo). PANDA_REF selects the panda images for the CLI
 #    (`:<ref>`) and server (`:server-<ref>`) — a release version (e.g. `0.37.0`)
@@ -71,9 +71,9 @@ docker build -t hermes-agent-base:2026.6.5 ./hermes-agent
 #    `panda.sandboxImage` on the same ref.
 docker build \
   --build-arg BASE_IMAGE=hermes-agent-base \
-  --build-arg BASE_TAG=2026.6.5 \
+  --build-arg BASE_TAG=2026.7.1 \
   --build-arg PANDA_REF=0.37.0 \
-  -t ethpandaops/chat:hermes-agent-panda-2026.6.5 \
+  -t ethpandaops/chat:hermes-agent-panda-2026.7.1 \
   images/hermes-agent-panda
 ```
 

@@ -10,7 +10,7 @@ GHCR as a private mirror we don't rely on.
 
 - **`hermes-agent-panda`** — NousResearch Hermes Agent + `panda` CLI/server + dockerd
   + the devnet skill pack. `docker.io/ethpandaops/chat:hermes-agent-panda-<base>-<sha>`
-  (`<base>` = Hermes CalVer, e.g. `2026.6.5`; `<sha>` = this repo's commit).
+  (`<base>` = Hermes CalVer, e.g. `2026.7.1`; `<sha>` = this repo's commit).
 - **`open-webui-cf`** — Open-WebUI patched to forward `Cf-Access-Jwt-Assertion`
   upstream to Hermes (per-user CF Access identity).
   `docker.io/ethpandaops/chat:open-webui-cf-<ow_tag>-<sha>`.

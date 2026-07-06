@@ -32,11 +32,11 @@ on:
       hermes_ref:
         description: 'NousResearch/hermes-agent git ref to build the base from'
         required: true
-        default: 'v2026.6.5'
+        default: 'v2026.7.1'
       base_tag:
         description: 'Base/overlay version tag (no "v" prefix)'
         required: true
-        default: '2026.6.5'
+        default: '2026.7.1'
       panda_ref:
         description: 'panda image ref for CLI/server/sandbox (release version, or pr-<n>-<sha>)'
         required: true
@@ -49,8 +49,8 @@ concurrency:
 env:
   IMAGE: ghcr.io/ethpandaops/hermes-agent-panda
   DOCKER_IMAGE: docker.io/ethpandaops/chat
-  HERMES_REF: ${{ github.event.inputs.hermes_ref || 'v2026.6.5' }}
-  BASE_TAG: ${{ github.event.inputs.base_tag || '2026.6.5' }}
+  HERMES_REF: ${{ github.event.inputs.hermes_ref || 'v2026.7.1' }}
+  BASE_TAG: ${{ github.event.inputs.base_tag || '2026.7.1' }}
   PANDA_REF: ${{ github.event.inputs.panda_ref || '0.37.0' }}
 
 jobs:
