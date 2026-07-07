@@ -1,5 +1,5 @@
-# Devnet AI-chat agent: Hermes Agent + panda CLI/server + sandbox Python env +
-# skill pack (panda/faucet/join-devnet). Consumed by the panda-chat chart.
+# Devnet AI-chat agent: Hermes Agent + panda CLI/server + dockerd + skill pack
+# (panda/faucet/join-devnet). Consumed by the panda-chat chart.
 # Published to: docker.io/ethpandaops/chat (tag hermes-agent-panda-<base>-<sha>)
 #
 # BASE_IMAGE = a vanilla NousResearch Hermes Agent image. There is no published
@@ -7,52 +7,77 @@
 # (tag = BASE_TAG) into a local `hermes-agent-base:<tag>` first, then builds this
 # overlay FROM it. For a local build, build that base yourself (see README).
 ARG BASE_IMAGE=hermes-agent-base
-ARG BASE_TAG=2026.6.5
+ARG BASE_TAG=2026.7.1
 
-# Panda artifacts come from the published panda images — NOT release tarballs —
-# so a branch/PR build of panda (label `build` → `pr-<n>-<sha>` image tags) can
-# be consumed directly without cutting a release. One ref drives all three:
-# CLI `ethpandaops/panda:<ref>`, server `:server-<ref>`, sandbox `:sandbox-<ref>`.
-# For a release, set the version (e.g. `0.33.0`). Needs a panda with BOTH the
-# `client_credentials` auth and the `direct` sandbox backend.
-ARG PANDA_REF=latest
+# Panda CLI + server come from the published panda images — NOT release tarballs
+# — so a branch/PR build of panda (label `build` → `pr-<n>-<sha>` image tags) can
+# be consumed without cutting a release. One ref drives both: CLI
+# `ethpandaops/panda:<ref>`, server `:server-<ref>`. Set a release version (e.g.
+# `0.37.0`) for durable use. Needs a panda with the `client_credentials` proxy
+# auth and the `docker` sandbox backend. The sandbox image itself is NOT baked
+# in — the in-pod dockerd pulls `ethpandaops/panda:sandbox-<ref>` at runtime
+# (the chart's `panda.sandboxImage`), so it must track this ref.
+ARG PANDA_REF=0.37.0
 FROM ethpandaops/panda:${PANDA_REF} AS pandacli
 FROM ethpandaops/panda:server-${PANDA_REF} AS pandaserver
-FROM ethpandaops/panda:sandbox-${PANDA_REF} AS sandbox
+
+# Toolstream proxy: rewrites Hermes' custom tool-progress SSE events into
+# standard OpenAI delta.tool_calls so Open-WebUI renders tool activity natively.
+FROM golang:1.23-alpine AS toolproxy
+WORKDIR /src
+COPY toolstream-proxy/ .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /hermes-toolstream-proxy .
 
 FROM ${BASE_IMAGE}:${BASE_TAG}
 
 USER root
 
-# curl (the chart startupProbe curls :2480/health), yq/jq for the entrypoint +
-# skills, libgomp1 for the sandbox stack's numpy/pandas C-extensions.
+# dockerd + client (docker.io ships both on bookworm) for the `docker` sandbox
+# backend; iptables/uidmap are dockerd runtime deps. curl (the chart
+# startupProbe curls :2480/health), yq/jq for the entrypoint + skills.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      curl yq jq libgomp1 && \
+      docker.io iptables uidmap \
+      curl yq jq && \
     rm -rf /var/lib/apt/lists/*
 
-# panda CLI + server (static CGO-free Go binaries) from the panda images.
+# panda CLI + server (static CGO-free Go binaries) from the panda images. The
+# sandbox image is pulled at runtime by dockerd — not baked in.
 COPY --from=pandacli /usr/local/bin/panda /usr/local/bin/panda
 COPY --from=pandaserver /usr/local/bin/panda-server /usr/local/bin/panda-server
+COPY --from=toolproxy /hermes-toolstream-proxy /usr/local/bin/hermes-toolstream-proxy
 
-# Sandbox python prefix → /opt/sandbox. The `direct` backend runs executed code
-# with the panda-server container's own python3, so it MUST carry the analytics
-# stack (pandas/numpy/clickhouse-connect + the `ethpandaops` package). CPython
-# derives sys.prefix from the executable location, so /opt/sandbox/bin/python3
-# resolves its site-packages under /opt/sandbox/lib; the panda-stack entrypoint
-# puts that first on PATH so it's the python the `direct` backend uses.
-COPY --from=sandbox /usr/local /opt/sandbox
+# Into the uv venv: langfuse SDK (observability/langfuse plugin) + the Telegram
+# SDK so the telegram gateway works without a runtime pip-install (the pod's
+# /opt/hermes is not writable by uid 10000). Telegram is enabled at runtime by
+# TELEGRAM_BOT_TOKEN; the SDK just needs to be present.
+RUN uv pip install --no-cache-dir --python /opt/hermes/.venv/bin/python \
+      langfuse python-telegram-bot
 
-# Langfuse SDK for Hermes' observability/langfuse plugin (into the uv venv).
-RUN uv pip install --no-cache-dir --python /opt/hermes/.venv/bin/python langfuse
+# Patch Hermes' chat-completions SSE to carry the tool result (it's in scope but
+# dropped upstream); the toolstream proxy maps it to each card's OUTPUT in OW.
+COPY patch-hermes-toolresult.py /tmp/patch-hermes-toolresult.py
+RUN /opt/hermes/.venv/bin/python /tmp/patch-hermes-toolresult.py && rm /tmp/patch-hermes-toolresult.py
 
 # Dispatch entrypoint: `panda-stack` arg → panda-server; anything else → Hermes.
+# devnet-context.sh preloads a devnet briefing for the agent (hermes path).
 COPY entrypoint.sh /opt/panda/entrypoint.sh
-RUN chmod +x /opt/panda/entrypoint.sh
+COPY devnet-context.sh /opt/panda/devnet-context.sh
+RUN chmod +x /opt/panda/entrypoint.sh /opt/panda/devnet-context.sh
 
 # Devnet skill pack — Hermes loads these when relevant.
 COPY skills/ /opt/hermes/skills/data/
 
-# Both containers run unprivileged (no dockerd); the chart pins uid 10000.
+# overlay2 is reliable as long as dockerd's data-root (/var/lib/docker) is on a
+# real fs — the chart mounts a node-local emptyDir there, so overlay2 stacks on
+# ext4/xfs, NOT the pod's overlay rootfs (which the kernel rejects as an overlay
+# upperdir). Override with DOCKERD_STORAGE_DRIVER=vfs only on exotic nodes whose
+# kubelet dir is itself overlayfs/NFS.
+ENV DOCKERD_STORAGE_DRIVER=overlay2
+
+# Image default user is root: the panda-server container runs the panda-stack
+# path (dockerd needs root) under the chart's privileged securityContext. The
+# hermes container is pinned to uid 10000 by the chart, so it stays unprivileged.
+USER root
 ENTRYPOINT ["/opt/panda/entrypoint.sh"]
 CMD ["gateway", "run"]

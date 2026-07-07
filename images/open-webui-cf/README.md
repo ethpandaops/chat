@@ -17,16 +17,16 @@ shared service account.
 
 ```bash
 docker build \
-  --build-arg OW_TAG=0.9.5 \
-  -t ethpandaops/chat:open-webui-cf-0.9.5 \
+  --build-arg OW_TAG=0.10.2 \
+  -t ethpandaops/chat:open-webui-cf-0.10.2 \
   images/open-webui-cf/
 
-docker push ethpandaops/chat:open-webui-cf-0.9.5
+docker push ethpandaops/chat:open-webui-cf-0.10.2
 ```
 
 `OW_TAG` must match the `appVersion` of the `open-webui` dependency in the
 [`panda-chat` chart](https://github.com/ethpandaops/ethereum-helm-charts/tree/master/charts/panda-chat)
-(chart `14.5.0` → appVersion `0.9.5`). Bump this here and the chart's
+(chart `15.2.0` → appVersion `0.10.2`). Bump this here and the chart's
 `open-webui.image.tag` together when upgrading the dependency.
 
 ## CI

@@ -6,9 +6,11 @@ name: build-hermes-agent-panda
 # There is no published upstream Hermes Agent image, so this builds a vanilla
 # base from github.com/NousResearch/hermes-agent (HERMES_REF) into a local
 # `hermes-agent-base:<tag>`, then builds the panda overlay (this repo's
-# Dockerfile) FROM it. The overlay pulls panda CLI/server/sandbox from the
+# Dockerfile) FROM it. The overlay pulls the panda CLI/server binaries from the
 # published panda images by PANDA_REF — so a panda PR build (label `build` →
-# `pr-<n>-<sha>`) can be wired in without cutting a release.
+# `pr-<n>-<sha>`) can be wired in without cutting a release. The sandbox image
+# is pulled at runtime by the in-pod dockerd, so PANDA_REF must match the
+# chart's `panda.sandboxImage` (`ethpandaops/panda:sandbox-<ref>`).
 #
 # When it builds + pushes (each tags the image by its source):
 #   - push a git tag            → hermes-agent-panda-<tag>      (+ -latest)
@@ -30,15 +32,15 @@ on:
       hermes_ref:
         description: 'NousResearch/hermes-agent git ref to build the base from'
         required: true
-        default: 'v2026.6.5'
+        default: 'v2026.7.1'
       base_tag:
         description: 'Base/overlay version tag (no "v" prefix)'
         required: true
-        default: '2026.6.5'
+        default: '2026.7.1'
       panda_ref:
         description: 'panda image ref for CLI/server/sandbox (release version, or pr-<n>-<sha>)'
         required: true
-        default: 'latest'
+        default: '0.37.0'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -47,9 +49,9 @@ concurrency:
 env:
   IMAGE: ghcr.io/ethpandaops/hermes-agent-panda
   DOCKER_IMAGE: docker.io/ethpandaops/chat
-  HERMES_REF: ${{ github.event.inputs.hermes_ref || 'v2026.6.5' }}
-  BASE_TAG: ${{ github.event.inputs.base_tag || '2026.6.5' }}
-  PANDA_REF: ${{ github.event.inputs.panda_ref || 'latest' }}
+  HERMES_REF: ${{ github.event.inputs.hermes_ref || 'v2026.7.1' }}
+  BASE_TAG: ${{ github.event.inputs.base_tag || '2026.7.1' }}
+  PANDA_REF: ${{ github.event.inputs.panda_ref || '0.37.0' }}
 
 jobs:
   build-and-push:

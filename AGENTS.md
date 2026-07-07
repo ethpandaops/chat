@@ -10,7 +10,7 @@ GHCR as a private mirror we don't rely on.
 
 - **`hermes-agent-panda`** — NousResearch Hermes Agent + `panda` CLI/server + dockerd
   + the devnet skill pack. `docker.io/ethpandaops/chat:hermes-agent-panda-<base>-<sha>`
-  (`<base>` = Hermes CalVer, e.g. `2026.6.5`; `<sha>` = this repo's commit).
+  (`<base>` = Hermes CalVer, e.g. `2026.7.1`; `<sha>` = this repo's commit).
 - **`open-webui-cf`** — Open-WebUI patched to forward `Cf-Access-Jwt-Assertion`
   upstream to Hermes (per-user CF Access identity).
   `docker.io/ethpandaops/chat:open-webui-cf-<ow_tag>-<sha>`.
@@ -23,9 +23,13 @@ platform/GitOps/Terraform/tenant code here.
 ## Layout
 
 - `images/hermes-agent-panda/` — `Dockerfile` (panda overlay), `entrypoint.sh`
-  (**dispatch** by first arg: `panda-stack` → dockerd + panda-server in the
-  privileged sidecar; anything else → Hermes `gateway run` in the unprivileged
-  container), `skills/{panda,faucet,join-devnet}/SKILL.md` (the product
+  (**dispatch** by first arg: `panda-stack` → `dockerd` + `panda-server` with
+  panda's `docker` sandbox backend in the privileged sidecar; anything else →
+  Hermes `gateway run`, fronted by the toolstream proxy, in the unprivileged
+  main container),
+  `toolstream-proxy/` (tiny Go reverse proxy that rewrites Hermes' custom
+  tool-progress SSE events into standard OpenAI `delta.tool_calls` so Open-WebUI
+  renders them), `skills/{panda,faucet,join-devnet}/SKILL.md` (the product
   surface; scoped by `$DEVNET_*`), README, `.env.example`.
 - `images/open-webui-cf/` — `Dockerfile` (`FROM` upstream OW + `patch.py`), `patch.py`
   (build-time patch of `get_headers_and_cookies()`; asserts uniqueness so a broken OW
@@ -45,7 +49,7 @@ Upstream is **CalVer** (`v2026.6.5`, …), **not** semver. Pin a real tag — do
 invent `v0.11.0`-style refs (they don't exist upstream and CI fails on clone).
 
 **open-webui-cf**: `docker build images/open-webui-cf --build-arg OW_TAG=<tag>`. `OW_TAG`
-**must match the open-webui Helm chart appVersion** (chart 14.5.0 → `0.9.5`); bump it
+**must match the open-webui Helm chart appVersion** (chart 15.2.0 → `0.10.2`); bump it
 here and in the panda-chat chart's `open-webui.image.tag` together. The `patch.py`
 target is fragile across OW upgrades — its `assert` is the guard.
 
