@@ -49,7 +49,7 @@ Upstream is **CalVer** (`v2026.6.5`, …), **not** semver. Pin a real tag — do
 invent `v0.11.0`-style refs (they don't exist upstream and CI fails on clone).
 
 **open-webui-cf**: `docker build images/open-webui-cf --build-arg OW_TAG=<tag>`. `OW_TAG`
-**must match the open-webui Helm chart appVersion** (chart 14.5.0 → `0.9.5`); bump it
+**must match the open-webui Helm chart appVersion** (chart 15.2.0 → `0.10.2`); bump it
 here and in the panda-chat chart's `open-webui.image.tag` together. The `patch.py`
 target is fragile across OW upgrades — its `assert` is the guard.
 

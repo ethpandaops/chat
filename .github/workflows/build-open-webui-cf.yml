@@ -7,7 +7,7 @@ name: build-open-webui-cf
 # Source under images/open-webui-cf/.
 #
 # OW_TAG must match the appVersion of the open-webui Helm chart in use
-# (chart 14.5.0 → appVersion 0.9.5). Bump it here and in the panda-chat chart
+# (chart 15.2.0 → appVersion 0.10.2). Bump it here and in the panda-chat chart
 # (open-webui.image.tag) together whenever the chart dependency is bumped.
 #
 # Output: ghcr.io/ethpandaops/open-webui-cf:<ow_tag>  (+ immutable :<ow_tag>-<sha>)
@@ -24,12 +24,12 @@ on:
       ow_tag:
         description: 'Open-WebUI image tag to patch (must match chart appVersion)'
         required: true
-        default: '0.9.5'
+        default: '0.10.2'
 
 env:
   IMAGE: ghcr.io/ethpandaops/open-webui-cf
   DOCKER_IMAGE: docker.io/ethpandaops/chat
-  OW_TAG: ${{ github.event.inputs.ow_tag || '0.9.5' }}
+  OW_TAG: ${{ github.event.inputs.ow_tag || '0.10.2' }}
 
 jobs:
   build-and-push:

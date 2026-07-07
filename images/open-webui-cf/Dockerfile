@@ -8,8 +8,8 @@
 # individual user rather than a shared service account.
 #
 # OW_TAG must match the appVersion of the open-webui Helm chart in use
-# (chart 14.5.0 → appVersion 0.9.5). Bump both together when upgrading.
-ARG OW_TAG=0.9.5
+# (chart 15.2.0 → appVersion 0.10.2). Bump both together when upgrading.
+ARG OW_TAG=0.10.2
 FROM ghcr.io/open-webui/open-webui:${OW_TAG}
 
 COPY patch.py /tmp/patch.py
