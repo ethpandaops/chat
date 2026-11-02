@@ -46,6 +46,12 @@ COPY --from=sandbox /usr/local /opt/sandbox
 # Langfuse SDK for Hermes' observability/langfuse plugin (into the uv venv).
 RUN uv pip install --no-cache-dir --python /opt/hermes/.venv/bin/python langfuse
 
+# brotlicffi < 1.2.1.0 bundles a Brotli decoder with an out-of-bounds write
+# (CVE-2026-111497), and httpx, requests and aiohttp decode `Content-Encoding: br`
+# responses with it, so any URL the agent fetches can reach it. Drop once the
+# Hermes base ships >= 1.2.1.0.
+RUN uv pip install --no-cache-dir --python /opt/hermes/.venv/bin/python 'brotlicffi>=1.2.1.0'
+
 # Dispatch entrypoint: `panda-stack` arg → panda-server; anything else → Hermes.
 COPY entrypoint.sh /opt/panda/entrypoint.sh
 RUN chmod +x /opt/panda/entrypoint.sh
