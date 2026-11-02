@@ -14,3 +14,9 @@ FROM ghcr.io/open-webui/open-webui:${OW_TAG}
 
 COPY patch.py /tmp/patch.py
 RUN python3 /tmp/patch.py && rm /tmp/patch.py
+
+# Brotli < 1.2.1 and brotlicffi < 1.2.1.0 have a decoder out-of-bounds write
+# (CVE-2026-111497), and requests, httpx and aiohttp decode `Content-Encoding: br`
+# responses with whichever is installed, so any URL Open-WebUI fetches can reach
+# it. The OW base ships both. Drop once it ships the fixed versions.
+RUN pip install --no-cache-dir 'Brotli>=1.2.1' 'brotlicffi>=1.2.1.0'
