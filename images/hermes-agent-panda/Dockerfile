@@ -1,6 +1,6 @@
 # Devnet AI-chat agent: Hermes Agent + panda CLI/server + sandbox Python env +
 # skill pack (panda/faucet/join-devnet). Consumed by the panda-chat chart.
-# Published to: docker.io/ethpandaops/chat (tag hermes-agent-panda-<base>-<sha>)
+# Published to: ghcr.io/ethpandaops/hermes-agent-panda (tag <base>-<sha>)
 #
 # BASE_IMAGE = a vanilla NousResearch Hermes Agent image. There is no published
 # upstream image, so CI builds it from github.com/NousResearch/hermes-agent
