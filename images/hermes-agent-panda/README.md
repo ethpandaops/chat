@@ -67,19 +67,19 @@ docker build \
   --build-arg BASE_IMAGE=hermes-agent-base \
   --build-arg BASE_TAG=2026.6.5 \
   --build-arg PANDA_REF=latest \
-  -t ethpandaops/chat:hermes-agent-panda-2026.6.5 \
+  -t ghcr.io/ethpandaops/hermes-agent-panda:2026.6.5 \
   images/hermes-agent-panda
 ```
 
-CI does both and pushes to **Docker Hub** as
-`docker.io/ethpandaops/chat:hermes-agent-panda-<source>` (+ `…-latest` on `main`
-/ tags); it also pushes to GHCR as a private mirror. See
+CI does both and pushes to GHCR as
+`ghcr.io/ethpandaops/hermes-agent-panda:<source>` (+ `latest` on dispatch / tags).
+See
 [`.github/workflows/build-hermes-agent-panda.yml`](../../.github/workflows/build-hermes-agent-panda.yml):
 it builds on git tags, on `workflow_dispatch` (pin `hermes_ref` / `base_tag` /
 `panda_ref`), and on a PR **labeled `build-docker-image`** — the heavy upstream
 base build means there is no plain main-push build. The label build tags the
 image by branch name
-(`hermes-agent-panda-<branch>`) so a devnet can pull a branch image without a
+(`:<branch>`) so a devnet can pull a branch image without a
 release. The panda side mirrors this: label panda PR with `build` to publish its
 `pr-<n>-<sha>` images, then pass that as `panda_ref`.
 

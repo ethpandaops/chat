@@ -18,10 +18,10 @@ shared service account.
 ```bash
 docker build \
   --build-arg OW_TAG=0.9.5 \
-  -t ethpandaops/chat:open-webui-cf-0.9.5 \
+  -t ghcr.io/ethpandaops/open-webui-cf:0.9.5 \
   images/open-webui-cf/
 
-docker push ethpandaops/chat:open-webui-cf-0.9.5
+docker push ghcr.io/ethpandaops/open-webui-cf:0.9.5
 ```
 
 `OW_TAG` must match the `appVersion` of the `open-webui` dependency in the
@@ -33,5 +33,5 @@ docker push ethpandaops/chat:open-webui-cf-0.9.5
 
 [`.github/workflows/build-open-webui-cf.yml`](../../.github/workflows/build-open-webui-cf.yml)
 builds and pushes on changes under `images/open-webui-cf/**` (or via
-`workflow_dispatch`): `docker.io/ethpandaops/chat:open-webui-cf-<ow_tag>-<sha>`
-(+ `…-<ow_tag>`), plus a GHCR private mirror.
+`workflow_dispatch`): `ghcr.io/ethpandaops/open-webui-cf:<ow_tag>-<sha>`
+(+ `<ow_tag>`).

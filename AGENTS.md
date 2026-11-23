@@ -3,17 +3,15 @@
 ## What this repo is
 
 The **EthPandaOps devnet AI-chat container images** and nothing else. Two images,
-each under `images/<name>/` with its own workflow. The image that matters is the
-**Docker Hub** one — a single `docker.io/ethpandaops/chat` package, tag-prefixed
-per image (this is what the chart/devnets actually pull). Each is also pushed to
-GHCR as a private mirror we don't rely on.
+each under `images/<name>/` with its own workflow, each published to its own GHCR
+package.
 
 - **`hermes-agent-panda`** — NousResearch Hermes Agent + `panda` CLI/server + dockerd
-  + the devnet skill pack. `docker.io/ethpandaops/chat:hermes-agent-panda-<base>-<sha>`
+  + the devnet skill pack. `ghcr.io/ethpandaops/hermes-agent-panda:<base>-<sha>`
   (`<base>` = Hermes CalVer, e.g. `2026.6.5`; `<sha>` = this repo's commit).
 - **`open-webui-cf`** — Open-WebUI patched to forward `Cf-Access-Jwt-Assertion`
   upstream to Hermes (per-user CF Access identity).
-  `docker.io/ethpandaops/chat:open-webui-cf-<ow_tag>-<sha>`.
+  `ghcr.io/ethpandaops/open-webui-cf:<ow_tag>-<sha>`.
 
 This repo holds **only** the EthPandaOps-specific images. The generic, any-company
 chat *platform* (multi-tenant Open-WebUI + Hermes building blocks) is a separate lab
@@ -52,9 +50,8 @@ target is fragile across OW upgrades — its `assert` is the guard.
 ## Conventions
 
 - **Never commit secrets.** `.env` is gitignored; `.env.example` is the template.
-- Image target is **`docker.io/ethpandaops/chat`** (one package, tag-prefixed per
-  image). GHCR (`ghcr.io/ethpandaops/{hermes-agent-panda,open-webui-cf}`) is an
-  incidental private mirror — don't depend on it.
+- Image target is GHCR: `ghcr.io/ethpandaops/{hermes-agent-panda,open-webui-cf}`,
+  pushed with the workflow's `GITHUB_TOKEN` (no registry secrets).
 - Branch names are prefixed `qu0b/`.
 - Keep the image single-purpose; capability changes belong in `skills/`.
 
@@ -65,8 +62,8 @@ This image is one piece of a multi-repo deployment. The pieces and where they li
 - **Helm chart** — [`ethpandaops/ethereum-helm-charts` → `charts/panda-chat`](https://github.com/ethpandaops/ethereum-helm-charts/tree/master/charts/panda-chat)
   (on `master`, **v0.2.0**). Renders the two-container pod: an **unprivileged
   `hermes`** container + a **privileged `panda-server`** sidecar that holds the bot
-  credential. `image.repository` / `open-webui.image` point at the Docker Hub image
-  above. Bumping `OW_TAG` here ⇄ `open-webui.image.tag` there must stay in lock-step.
+  credential. `image.repository` / `open-webui.image` point at the images above.
+  Bumping `OW_TAG` here ⇄ `open-webui.image.tag` there must stay in lock-step.
 - **Ansible renderer** — [`ethpandaops/ansible-collection-general` → `roles/generate_kubernetes_config`](https://github.com/ethpandaops/ansible-collection-general/tree/master/roles/generate_kubernetes_config)
   (chat work on branch `qu0b/chat-panda-bot-token`). `templates/chat.yaml.j2` +
   the `gen_kubernetes_config_chat_*` defaults. Chat is **opt-in** (`chat_enabled`,

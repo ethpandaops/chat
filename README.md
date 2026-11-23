@@ -1,15 +1,14 @@
 # ethpandaops/chat
 
-EthPandaOps devnet AI-chat container images, published to **Docker Hub** (a single
-`docker.io/ethpandaops/chat` package, tag-prefixed per image) and consumed by the
+EthPandaOps devnet AI-chat container images, published to **GHCR** (one package per
+image) and consumed by the
 [`panda-chat`](https://github.com/ethpandaops/ethereum-helm-charts/tree/master/charts/panda-chat)
-Helm chart (rendered per devnet by the `bal-devnets` ansible pipeline). Each is also
-pushed to GHCR as a private mirror we don't rely on.
+Helm chart (rendered per devnet by the `bal-devnets` ansible pipeline).
 
-| Image | Path | Pulled from (Docker Hub tags) | What it is |
+| Image | Path | Pulled from | What it is |
 |-------|------|--------------|------------|
-| **hermes-agent-panda** | [`images/hermes-agent-panda/`](images/hermes-agent-panda/) | `ethpandaops/chat:hermes-agent-panda-<base>-<sha>` (+ `…-latest`) | NousResearch Hermes Agent + `panda` CLI/server + dockerd + the devnet skill pack (panda/faucet/join-devnet). |
-| **open-webui-cf** | [`images/open-webui-cf/`](images/open-webui-cf/) | `ethpandaops/chat:open-webui-cf-<ow_tag>-<sha>` (+ `…-<ow_tag>`) | Open-WebUI patched to forward the `Cf-Access-Jwt-Assertion` header to the upstream model endpoint, so Hermes sees the individual Cloudflare-Access user (per-user auth + Langfuse attribution). |
+| **hermes-agent-panda** | [`images/hermes-agent-panda/`](images/hermes-agent-panda/) | `ghcr.io/ethpandaops/hermes-agent-panda:<base>-<sha>` (+ `latest`) | NousResearch Hermes Agent + `panda` CLI/server + dockerd + the devnet skill pack (panda/faucet/join-devnet). |
+| **open-webui-cf** | [`images/open-webui-cf/`](images/open-webui-cf/) | `ghcr.io/ethpandaops/open-webui-cf:<ow_tag>-<sha>` (+ `<ow_tag>`) | Open-WebUI patched to forward the `Cf-Access-Jwt-Assertion` header to the upstream model endpoint, so Hermes sees the individual Cloudflare-Access user (per-user auth + Langfuse attribution). |
 
 Each image builds and pushes via its own workflow under
 [`.github/workflows/`](.github/workflows/) (on changes under its `images/<name>/**`,
